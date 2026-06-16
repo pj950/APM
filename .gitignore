@@ -14,6 +14,8 @@ dist-ssr
 *.local
 graphify-out/
 vite.config.ts.timestamp-*.mjs
+public/model/
+public/images/
 
 # Editor directories and files
 .vscode/*
