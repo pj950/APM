@@ -1,0 +1,16 @@
+node_modules/
+dist/
+coverage/
+public/images/
+public/audio/
+public/model/
+*.md
+*.html
+*.txt
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.svg
+package-lock.json

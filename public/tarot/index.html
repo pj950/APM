@@ -1,0 +1,917 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- 
+    如果部署后图片无法加载，请取消下面的注释并设置正确的基础路径。
+    例如：<base href="https://tarot-oracle.edgeone.cool/">
+    或者如果部署在子目录：<base href="https://tarot-oracle.edgeone.cool/subdirectory/">
+    -->
+    <!-- <base href="https://tarot-oracle.edgeone.cool/"> -->
+    <title>Tarot Oracle: The Void</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;600&display=swap'); /* 引入中文字体 */
+
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Cinzel', 'Noto Serif SC', serif; }
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+        
+        /* 通用淡入淡出类 */
+        .fade-enter { opacity: 0; animation: fadeIn 1s forwards; }
+        .fade-exit { opacity: 1; animation: fadeOut 1s forwards; pointer-events: none; }
+        @keyframes fadeIn { to { opacity: 1; } }
+        @keyframes fadeOut { to { opacity: 0; } }
+
+        /* ==================== 阶段1：提问层 (Intro Layer) ==================== */
+        #intro-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 20;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            background: radial-gradient(circle, rgba(0,0,0,0) 0%, rgba(0,0,0,0.8) 100%);
+        }
+        .intro-text {
+            color: #ccc; font-size: 18px; letter-spacing: 3px; margin-bottom: 40px;
+            text-shadow: 0 0 10px rgba(255,255,255,0.3); text-align: center;
+        }
+        .soul-input {
+            background: transparent; border: none; border-bottom: 1px solid rgba(212, 175, 55, 0.5);
+            width: 300px; padding: 10px; color: #d4af37; font-size: 20px; text-align: center;
+            font-family: 'Noto Serif SC', serif; outline: none; transition: 0.5s;
+        }
+        .soul-input:focus { border-bottom: 1px solid #d4af37; width: 400px; }
+        .soul-input::placeholder { color: #444; font-style: italic; }
+        
+        .start-btn {
+            margin-top: 60px; padding: 12px 40px; background: transparent;
+            border: 1px solid #444; color: #888; font-family: 'Cinzel', serif; letter-spacing: 2px;
+            cursor: pointer; transition: 0.5s; border-radius: 2px;
+        }
+        .start-btn:hover { border-color: #d4af37; color: #d4af37; box-shadow: 0 0 20px rgba(212,175,55,0.2); }
+
+        /* ==================== 阶段2：游戏UI层 (Play Layer) ==================== */
+        #ui-layer { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; 
+            pointer-events: none; opacity: 0; transition: opacity 1s;
+        }
+        #ui-layer.active { opacity: 1; pointer-events: none; } /* inner elements have pointer-events auto */
+
+        /* 顶部状态栏 */
+        #status-bar { 
+            position: absolute; top: 40px; left: 50%; transform: translateX(-50%); 
+            display: flex; gap: 60px; opacity: 0.8;
+        }
+        .status-item { display: flex; flex-direction: column; align-items: center; gap: 8px; opacity: 0.2; transition: 0.4s; color: #888; }
+        .status-icon { font-size: 24px; filter: drop-shadow(0 0 5px rgba(0,0,0,0.5)); }
+        .status-label { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; }
+        .status-item.active { opacity: 1; color: #d4af37; transform: translateY(-5px); text-shadow: 0 0 15px rgba(212, 175, 55, 0.6); }
+
+        /* 历史记录 */
+        #history-bar { position: absolute; top: 30px; left: 30px; display: flex; gap: 15px; pointer-events: auto; }
+        .history-slot { display: flex; flex-direction: column; align-items: center; width: 50px; opacity: 0; animation: fadeSlideIn 0.8s forwards; }
+        @keyframes fadeSlideIn { from { opacity:0; transform:translateY(-20px); } to { opacity:1; transform:translateY(0); } }
+        .history-img-box {
+            width: 36px; height: 60px; border: 1px solid rgba(212, 175, 55, 0.4);
+            box-shadow: 0 0 10px rgba(0,0,0,0.8); border-radius: 2px; overflow: hidden; margin-bottom: 5px;
+        }
+        .history-img-box img { width: 100%; height: 100%; object-fit: cover; }
+        .history-slot.reversed .history-img-box img { transform: rotate(180deg); }
+        .history-text { font-size: 9px; color: #aaa; text-align: center; line-height: 1.2; font-family: 'Noto Serif SC'; }
+        .history-text span.rev-mark { color: #ff6b6b; font-size: 8px; display: block; }
+
+        /* 卡牌详情 */
+        #card-detail { 
+            position: absolute; bottom: 2%; left: 50%; transform: translateX(-50%); 
+            text-align: center; opacity: 0; transition: opacity 1s; width: 100%; max-width: 700px;
+        }
+        #card-name { font-size: 42px; color: #d4af37; letter-spacing: 5px; margin-bottom: 10px; text-shadow: 0 2px 20px rgba(0,0,0,1); }
+        #card-sub { font-size: 14px; color: #888; margin-bottom: 25px; letter-spacing: 3px; text-transform: uppercase; display: none; }
+        #card-desc { font-size: 18px; color: #ddd; text-shadow: 0 2px 4px #000; line-height: 1.8; font-family: 'Noto Serif SC', serif; display: none;}
+        #burn-hint {  font-size: 12px; color: rgba(255,255,255,0.6); letter-spacing: 2px; animation: breathe 3s infinite; }
+        @keyframes breathe { 0%,100%{opacity:0.4} 50%{opacity:1} }
+
+        /* ==================== 阶段3：解读层 (Reading Layer) ==================== */
+        #reading-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 30;
+            background: rgba(0,0,0,0.85); backdrop-filter: blur(5px);
+            display: none; flex-direction: column; justify-content: flex-start; align-items: center;
+            opacity: 0; transition: opacity 1s; padding: 40px 20px;
+            overflow: hidden;
+        }
+        #reading-content { 
+            width: 100%; 
+            max-width: 1200px;
+            text-align: center; 
+            display: flex; 
+            flex-direction: column; 
+            height: 100vh;
+            max-height: 100vh;
+            padding: 20px 40px;
+            box-sizing: border-box;
+        }
+        #reading-title { 
+            color: #d4af37; 
+            font-size: 24px; 
+            margin-bottom: 20px; 
+            letter-spacing: 4px; 
+            flex-shrink: 0;
+        }
+        #reading-text { 
+            color: #eee; 
+            font-size: 15px; 
+            line-height: 1.8; 
+            font-family: 'Noto Serif SC'; 
+            white-space: pre-wrap; 
+            text-align: left; 
+            overflow: hidden;
+            flex: 1;
+            min-height: 0;
+            padding: 20px 30px;
+            margin-bottom: 15px;
+            border: 1px solid rgba(212, 175, 55, 0.2);
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.4);
+        }
+        #restart-btn { 
+            margin-top: 20px; 
+            opacity: 0; 
+            flex-shrink: 0;
+        }
+
+        /* 调试与辅助 */
+        #input-video { position: absolute; bottom: 10px; right: 10px; width: 100px; height: 75px; transform: scaleX(-1); opacity: 0; z-index: 0; transition: opacity 0.5s; border: 1px solid #333; }
+        #input-video.active { opacity: 0.2; }
+        #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #444; font-size: 12px; letter-spacing: 2px; z-index: 100; transition: opacity 0.5s; }
+        .lil-gui { top: auto !important; bottom: 20px !important; right: 20px !important; }
+    </style>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lil-gui@0.17.0/dist/lil-gui.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+<body>
+
+    <div id="loading">SYSTEM INITIALIZING...</div>
+
+    <div id="canvas-container"></div>
+    <video id="input-video" playsinline></video>
+
+    <!-- 阶段1：提问（已隐藏，自动跳过） -->
+    <div id="intro-layer" style="display:none;"></div>
+
+    <!-- 阶段2：抽牌 -->
+    <div id="ui-layer">
+        <div id="history-bar"></div>
+        <div id="status-bar">
+            <div id="st-browse" class="status-item"><div class="status-icon">🖐</div><div class="status-label">感应</div></div>
+            <div id="st-grab" class="status-item"><div class="status-icon">✊</div><div class="status-label">捕获</div></div>
+            <div id="st-release" class="status-item"><div class="status-icon">🖐</div><div class="status-label">归位</div></div>
+        </div>
+        <div id="card-detail">
+            <div id="card-name"></div><div id="card-sub"></div><div id="card-desc"></div>
+            <div id="burn-hint">再次张开手掌，接纳指引...</div>
+        </div>
+    </div>
+
+    <!-- 阶段3：解读 -->
+    <div id="reading-layer">
+        <div id="reading-content">
+            <div id="reading-title">✦ 启 示 ✦</div>
+            <div id="reading-text"></div>
+            <button id="restart-btn" class="start-btn" onclick="restartTarotSession()">重新提问</button>
+        </div>
+    </div>
+
+<script>
+const CONFIG = { spreadRadius: 22, spreadWidth: 3.5, scrollSpeed: 0.08, cursorSmooth: 0.15, cameraZ: 6.5 };
+const AURA_PARAMS = { count: 3000, radiusX: 1.2, radiusY: 1.8, width: 0.3, size: 0.04, color: '#ffffff', speed: 0.02, opacity: 0.8, zOffset: 0.2 };
+
+// LLM API 配置 - 支持 Gemini / ZHIPU / DeepSeek
+const LLM_CONFIG = {
+    useProxy: true, // 使用后端代理（推荐，更安全）
+    proxyURL: '/api/tarot-reading', // 后端代理地址
+    provider: 'gemini', // 'gemini' | 'silicon' | 'nvidia' | 'deepseek' | 'zhipu'
+    model: '', // 留空则使用默认值
+    // 默认模型：
+    // - deepseek: 'deepseek-chat'
+    // - gemini: 'gemini-2.5-flash'
+    // - silicon: 'Qwen/Qwen2.5-72B-Instruct'
+    // - nvidia: 'meta/llama-3.1-70b-instruct'
+    // - zhipu: 'glm-4-flash'
+};
+
+const MAJORS_INFO = [
+    { n: "愚者", e: "The Fool", m: "新的开始 · 冒险 · 纯真" }, { n: "魔术师", e: "The Magician", m: "创造力 · 意志 · 显化" }, { n: "女祭司", e: "The High Priestess", m: "直觉 · 神秘 · 潜意识" }, { n: "皇后", e: "The Empress", m: "丰饶 · 自然 · 母性" }, { n: "皇帝", e: "The Emperor", m: "权威 · 结构 · 控制" }, { n: "教皇", e: "The Hierophant", m: "传统 · 信仰 · 教育" }, { n: "恋人", e: "The Lovers", m: "爱 · 和谐 · 选择" }, { n: "战车", e: "The Chariot", m: "胜利 · 意志 · 自律" }, { n: "力量", e: "Strength", m: "勇气 · 耐心 · 同情" }, { n: "隐士", e: "The Hermit", m: "内省 · 孤独 · 指引" }, { n: "命运之轮", e: "Wheel of Fortune", m: "周期 · 变化 · 运气" }, { n: "正义", e: "Justice", m: "公平 · 真理 · 因果" }, { n: "倒吊人", e: "The Hanged Man", m: "牺牲 · 新视角 · 放手" }, { n: "死神", e: "Death", m: "结束 · 转变 · 重生" }, { n: "节制", e: "Temperance", m: "平衡 · 适度 · 融合" }, { n: "恶魔", e: "The Devil", m: "束缚 · 欲望 · 诱惑" }, { n: "高塔", e: "The Tower", m: "突变 · 混乱 · 觉醒" }, { n: "星星", e: "The Star", m: "希望 · 灵感 · 治愈" }, { n: "月亮", e: "The Moon", m: "幻觉 · 不安 · 潜意识" }, { n: "太阳", e: "The Sun", m: "快乐 · 成功 · 活力" }, { n: "审判", e: "Judgement", m: "复活 · 觉醒 · 召唤" }, { n: "世界", e: "The World", m: "完成 · 整合 · 圆满" }
+];
+const MINORS_SUITS = [ { id: 'wands', name: '权杖', key: '火' }, { id: 'cups', name: '圣杯', key: '水' }, { id: 'swords', name: '宝剑', key: '风' }, { id: 'pentacles', name: '星币', key: '土' } ];
+const MINORS_RANKS = [ { id: 'ace', cn: '首牌', m: '新开端' }, { id: '2', cn: '2', m: '平衡与决定' }, { id: '3', cn: '3', m: '合作' }, { id: '4', cn: '4', m: '稳定' }, { id: '5', cn: '5', m: '冲突' }, { id: '6', cn: '6', m: '胜利' }, { id: '7', cn: '7', m: '坚持' }, { id: '8', cn: '8', m: '变化' }, { id: '9', cn: '9', m: '韧性' }, { id: '10', cn: '10', m: '圆满' }, { id: 'page', cn: '侍从', m: '好奇' }, { id: 'knight', cn: '骑士', m: '行动' }, { id: 'queen', cn: '王后', m: '理解' }, { id: 'king', cn: '国王', m: '掌控' } ];
+
+let RAW_DECK = [];
+MAJORS_INFO.forEach((info, index) => { RAW_DECK.push({ ...info, type: 'Major Arcana', url: `major_${index}.jpg` }); });
+MINORS_SUITS.forEach(suit => { MINORS_RANKS.forEach(rank => { RAW_DECK.push({ n: `${suit.name}${rank.cn}`, e: `${rank.cn} of ${suit.name}`, m: `${suit.key} · ${rank.m}`, type: 'Minor Arcana', url: `${suit.id}_${rank.id}.jpg` }); }); });
+
+/**
+ * Fisher-Yates 洗牌算法
+ * 用于随机化牌组的顺序
+ */
+function shuffleDeck(array) {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+}
+
+/**
+ * 按照塔罗规则创建并洗牌
+ * 模拟真实塔罗实践：通过物理洗牌过程翻转牌
+ * - 模拟揉牌、切牌等动作，牌成片翻转而非独立随机
+ * - 洗牌完成后，每张牌的方向固定，抽牌时不再随机
+ * - 自然产生约25%-45%的逆位率，小牌逆位率略高于大牌
+ */
+ function createTarotDeck(rawDeck) {
+    console.log('开始塔罗洗牌...');
+    
+    // 1. 从原始牌组创建副本，并确保所有牌初始为正位
+    let deck = rawDeck.map(card => ({
+        ...card,
+        isReversed: false  // 重置为正位，开始新的洗牌周期
+    }));
+    
+    // 2. 先打乱顺序
+    deck = shuffleDeck(deck);
+    
+    // 3. 模拟物理洗牌：牌是成片翻转的，不是每张独立
+    const segmentCount = 8 + Math.floor(Math.random() * 8); // 8-15段
+
+    for (let i = 0; i < deck.length; i++) {
+    // 每段的开始决定是否翻转这一段
+        if (i % Math.floor(deck.length / segmentCount) === 0) {
+            const flipThisSegment = Math.random() < 0.4; // 40%的段会翻转
+            
+            if (flipThisSegment) {
+                // 翻转这一段（约5-10张牌）← 保持原来的随机段大小
+                const segmentSize = 5 + Math.floor(Math.random() * 6);
+                for (let j = i; j < Math.min(i + segmentSize, deck.length); j++) {
+                    deck[j].isReversed = !deck[j].isReversed;
+                }
+                i += segmentSize - 1;
+            }
+        }
+    }
+    
+    // 4. 模拟切牌动作（可能翻转一堆牌）
+    const cutPoint = Math.floor(deck.length * (0.3 + Math.random() * 0.4));
+    if (Math.random() < 0.5) { // 50%的几率切牌时翻转一部分
+        const pileToFlip = Math.random() < 0.5 ? 
+            deck.slice(0, cutPoint) : 
+            deck.slice(cutPoint);
+        
+        pileToFlip.forEach(card => {
+            card.isReversed = !card.isReversed;
+        });
+    }
+    
+    // 5. 最后轻微调整（最上面几张可能翻转）
+    const topFlipCount = Math.floor(Math.random() * 4);
+    for (let i = 0; i < topFlipCount; i++) {
+        deck[i].isReversed = !deck[i].isReversed;
+    }
+    
+    console.log('洗牌完成');
+    return deck;
+}
+
+// 获取资源基础路径的统一函数
+const getBasePath = () => {
+    // 方案1：优先使用 base 标签（如果存在）
+    const baseTag = document.querySelector('base');
+    if (baseTag && baseTag.href) {
+        try {
+            const baseUrl = new URL(baseTag.href);
+            let path = baseUrl.pathname;
+            const result = path.endsWith('/') ? path : path + '/';
+            console.log('使用 base 标签路径:', result);
+            return result;
+        } catch(e) {
+            console.warn('base 标签解析失败:', e);
+        }
+    }
+    
+    // 方案2：从当前文档的完整URL计算
+    try {
+        const currentUrl = new URL(window.location.href);
+        let pathname = currentUrl.pathname;
+        
+        console.log('当前页面路径:', pathname);
+        
+        // 移除文件名，只保留目录路径
+        if (pathname === '/' || pathname === '') {
+            console.log('检测到根目录，返回 /');
+            return '/';
+        }
+        
+        // 如果路径以 .html 结尾，说明有文件名，需要移除
+        if (pathname.endsWith('.html')) {
+            const lastSlash = pathname.lastIndexOf('/');
+            if (lastSlash === 0) {
+                console.log('根目录的HTML文件，返回 /');
+                return '/'; // 根目录的文件，如 /index.html
+            }
+            const result = pathname.substring(0, lastSlash + 1);
+            console.log('HTML文件所在目录:', result);
+            return result;
+        }
+        
+        // 如果路径以 / 结尾，直接返回
+        if (pathname.endsWith('/')) {
+            console.log('路径已以 / 结尾，返回:', pathname);
+            return pathname;
+        }
+        
+        // 否则添加 /
+        const result = pathname + '/';
+        console.log('添加 / 后的路径:', result);
+        return result;
+    } catch(e) {
+        console.warn('无法计算基础路径，使用默认值 /', e);
+        return '/';
+    }
+};
+
+const getImg = (path) => {
+    // 如果是完整URL，直接返回
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+        return path;
+    }
+    
+    const basePath = getBasePath();
+    const imgPath = `${basePath}assets/${path}`;
+    console.log('Loading image:', imgPath, 'from basePath:', basePath, 'original path:', path); // 调试信息
+    return imgPath;
+}; 
+
+/* SHADERS */
+const ashVertexShader = `uniform float uTime; uniform float uSpeed; uniform float uSize; uniform float uSpread; attribute float aRandom; attribute vec3 aColor; varying vec3 vColor; varying float vAlpha; vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;} vec4 mod289(vec4 x){return x-floor(x*(1.0/289.0))*289.0;} vec4 permute(vec4 x){return mod289(((x*34.0)+1.0)*x);} vec4 taylorInvSqrt(vec4 r){return 1.79284291400159-0.85373472095314*r;} float snoise(vec3 v){ const vec2 C=vec2(1.0/6.0,1.0/3.0); const vec4 D=vec4(0.0,0.5,1.0,2.0); vec3 i=floor(v+dot(v,C.yyy)); vec3 x0=v-i+dot(i,C.xxx); vec3 g=step(x0.yzx,x0.xyz); vec3 l=1.0-g; vec3 i1=min(g.xyz,l.zxy); vec3 i2=max(g.xyz,l.zxy); vec3 x1=x0-i1+C.xxx; vec3 x2=x0-i2+C.yyy; vec3 x3=x0-D.yyy; i=mod289(i); vec4 p=permute(permute(permute(i.z+vec4(0.0,i1.z,i2.z,1.0))+i.y+vec4(0.0,i1.y,i2.y,1.0))+i.x+vec4(0.0,i1.x,i2.x,1.0)); float n_=0.142857142857; vec3 ns=n_*D.wyz-D.xzx; vec4 j=p-49.0*floor(p*ns.z*ns.z); vec4 x_=floor(j*ns.z); vec4 y_=floor(j-7.0*x_); vec4 x=x_*ns.x+ns.yyyy; vec4 y=y_*ns.x+ns.yyyy; vec4 h=1.0-abs(x)-abs(y); vec4 b0=vec4(x.xy,y.xy); vec4 b1=vec4(x.zw,y.zw); vec4 s0=floor(b0)*2.0+1.0; vec4 s1=floor(b1)*2.0+1.0; vec4 sh=-step(h,vec4(0.0)); vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy; vec4 a1=b1.xzyw+s1.xzyw*sh.zzww; vec3 p0=vec3(a0.xy,h.x); vec3 p1=vec3(a0.zw,h.y); vec3 p2=vec3(a1.xy,h.z); vec3 p3=vec3(a1.zw,h.w); vec4 norm=taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3))); p0*=norm.x; p1*=norm.y; p2*=norm.z; p3*=norm.w; vec4 m=max(0.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.0); m=m*m; return 42.0*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3))); } void main() { vColor = aColor; float t = uTime * (1.0 + aRandom * 0.5); vec3 noisePos = position * 0.5 + vec3(0.0, t * 0.5, 0.0); float noiseVal = snoise(noisePos); vec3 newPos = position; newPos.y += t * 2.0; newPos.x += noiseVal * t * uSpread; newPos.z += noiseVal * t * uSpread; vAlpha = 1.0 - smoothstep(0.0, 2.5, t); vec4 mvPosition = modelViewMatrix * vec4(newPos, 1.0); gl_PointSize = (uSize * aRandom + 2.0) * (1.0 / -mvPosition.z); gl_Position = projectionMatrix * mvPosition; }`;
+const ashFragmentShader = `varying vec3 vColor; varying float vAlpha; void main() { if (vAlpha <= 0.0) discard; vec2 coord = gl_PointCoord - vec2(0.5); float dist = length(coord); if(dist > 0.5) discard; float glow = 1.0 - (dist * 2.0); gl_FragColor = vec4(vColor, vAlpha * glow); }`;
+const auraVertexShader = `uniform float uTime; uniform float uSize; attribute float aRandom; attribute float aAngle; attribute float aRadius; varying float vAlpha; void main() { vec3 newPos = position; float twinkle = 0.5 + 0.5 * sin(uTime * 2.0 + aRandom * 10.0); vAlpha = twinkle; vec4 mvPosition = modelViewMatrix * vec4(newPos, 1.0); gl_PointSize = (uSize * aRandom + 10.0) * (1.0 / -mvPosition.z); gl_Position = projectionMatrix * mvPosition; }`;
+const auraFragmentShader = `uniform vec3 uColor; uniform float uOpacity; varying float vAlpha; void main() { vec2 coord = gl_PointCoord - vec2(0.5); float dist = length(coord); if(dist > 0.5) discard; float strength = 1.0 - (dist * 2.0); strength = pow(strength, 2.0); gl_FragColor = vec4(uColor, vAlpha * uOpacity * strength); }`;
+
+class TarotSpace {
+    constructor() {
+        this.container = document.getElementById('canvas-container');
+        this.w = window.innerWidth; this.h = window.innerHeight;
+        this.cards = []; this.particles = [];
+        
+        // 游戏状态管理
+        this.gameState = 'intro'; // intro -> playing -> reading
+        this.gestureState = 'browsing'; // playing状态下的子状态: browsing, revealed
+        this.gestureMode = 'none'; 
+        
+        this.drawnCards = []; // 已抽取的牌
+        this.maxCards = 3;
+        this.cardTextureCache = new Map();
+        this.revealLockUntil = 0;
+        
+        // 按照塔罗规则创建并洗牌（每次初始化时进行一次，方向固定）
+        this.tarotDeck = createTarotDeck(RAW_DECK);
+        
+        this.scrollOffset = 0; this.targetScrollOffset = 0;
+        this.hoveredCard = null; this.revealedCard = null;
+        this.handPos = { x: 0, y: 0 };
+        this.cursorPos = new THREE.Vector2(0,0);
+        this.targetCursorPos = new THREE.Vector2(0,0);
+        
+        this.texLoader = new THREE.TextureLoader();
+        this.texLoader.setCrossOrigin('anonymous');
+        
+        this.initThree();
+        this.backTexture = this.generateCardTexture(); 
+        this.loadLocalBack(); 
+
+        this.initCards(); // 初始化时不显示，等待 start
+        this.initCursor(); 
+        // this.initAura();   
+        this.initBackgroundStars();
+        this.initMediaPipe();
+        this.initMouse();
+        this.initDOM(); // 绑定DOM事件
+
+        this.animate();
+        
+        // 加载完成
+        document.getElementById('loading').style.display = 'none';
+
+        // 跳过“凝视星空”入口，进入页面后直接开始抽牌。
+        window.setTimeout(() => this.startSession(), 250);
+    }
+
+    initDOM() {
+        // intro-layer 已隐藏，无需绑定事件
+    }
+
+    startSession() {
+        if (this.gameState === 'playing' || this.gameState === 'reading') return;
+
+        // 1. UI 切换
+        const intro = document.getElementById('intro-layer');
+        intro.classList.add('fade-exit');
+        intro.style.pointerEvents = 'none';
+        
+        const ui = document.getElementById('ui-layer');
+        ui.classList.add('active'); // 允许 pointer-events
+
+        // 2. 状态切换
+        this.gameState = 'playing';
+        this.gestureState = 'browsing';
+
+        // 3. 卡牌入场动画 (模拟洗牌)
+        this.cards.forEach((group, i) => {
+            group.position.set(0, 0, -50); // 先放远
+            group.visible = true;
+            
+            // 随机延迟飞入
+            new TWEEN.Tween(group.position)
+                .to({ z: -5 }, 1500)
+                .delay(i * 10) // 错落有致
+                .easing(TWEEN.Easing.Cubic.Out)
+                .start();
+        });
+
+        const restartBtn = document.getElementById('restart-btn');
+        restartBtn.style.opacity = 0;
+    }
+
+    restartSession() {
+        // 1) 关闭结果层，重置文本与按钮状态
+        const readingLayer = document.getElementById('reading-layer');
+        const readingText = document.getElementById('reading-text');
+        const restartBtn = document.getElementById('restart-btn');
+        readingLayer.style.opacity = 0;
+        readingLayer.style.display = 'none';
+        readingText.textContent = '';
+        restartBtn.style.opacity = 0;
+
+        // 2) 重置已抽牌与详情面板
+        this.drawnCards = [];
+        this.gestureState = 'browsing';
+        this.gestureMode = 'none';
+        this.revealedCard = null;
+        this.hoveredCard = null;
+        document.getElementById('history-bar').innerHTML = '';
+        document.getElementById('card-detail').style.opacity = 0;
+        document.getElementById('card-sub').style.display = 'none';
+        document.getElementById('card-desc').style.display = 'none';
+        document.getElementById('burn-hint').style.display = 'none';
+
+        // 3) 移除旧牌并重新洗牌建牌（复用已有纹理缓存，不重载页面）
+        this.cards.forEach((group) => {
+            group.visible = false;
+            this.scene.remove(group);
+        });
+        this.cards = [];
+        this.tarotDeck = createTarotDeck(RAW_DECK);
+        this.initCards();
+
+        // 4) 回到抽牌态
+        this.gameState = 'intro';
+        this.startSession();
+    }
+
+    async finishSession() {
+        this.gameState = 'reading';
+        
+        const readingLayer = document.getElementById('reading-layer');
+        const readingText = document.getElementById('reading-text');
+        
+        readingLayer.style.display = 'flex';
+        void readingLayer.offsetWidth; 
+        readingLayer.style.opacity = 1;
+
+        const question = document.getElementById('user-question')?.value || "无声的困惑";
+        const cardsStr = this.drawnCards.map(c => 
+            `${c.name}${c.isReversed ? '(逆位)' : '(正位)'}`
+        ).join(' → ');
+
+        // 显示加载状态
+        readingText.textContent = '星辰正在汇聚...\n\n请稍候，命运之轮正在转动...';
+
+        try {
+            // 调用 DeepSeek API
+            const interpretation = await this.callDeepSeekAPI(question, this.drawnCards);
+            this.displayReading(readingText, question, cardsStr, interpretation);
+        } catch (error) {
+            console.error('API 调用失败:', error);
+            const hint = `⚠️ 调用失败: ${error.message}\n\n已自动尝试 Gemini / Silicon / NVIDIA / DeepSeek / ZHIPU。`;
+            readingText.textContent = hint;
+            new TWEEN.Tween(document.getElementById('restart-btn').style)
+                .to({ opacity: 1 }, 500).start();
+        }
+    }
+
+    async callDeepSeekAPI(question, cards) {
+        // 使用后端代理（推荐方式）
+        if (LLM_CONFIG.useProxy) {
+            const fallbackOrder = ['gemini', 'silicon', 'nvidia', 'deepseek', 'zhipu'];
+            const preferred = LLM_CONFIG.provider || 'gemini';
+            const tryProviders = [preferred, ...fallbackOrder.filter(p => p !== preferred)];
+            const errors = [];
+
+            for (const p of tryProviders) {
+                try {
+                    const response = await fetch(LLM_CONFIG.proxyURL, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            question: question,
+                            cards: cards,
+                            provider: p,
+                            model: p === preferred ? LLM_CONFIG.model : ''
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({}));
+                        const msg = errorData.error || `代理请求失败: ${response.status}`;
+                        errors.push(`${p}: ${msg}`);
+                        continue;
+                    }
+
+                    const data = await response.json();
+                    console.log(`Tarot provider used: ${response.headers.get('X-Tarot-Provider') || p}`);
+                    return data.choices[0]?.message?.content || '未能获取解读内容';
+                } catch (e) {
+                    errors.push(`${p}: ${e.message || String(e)}`);
+                }
+            }
+
+            throw new Error(`All providers failed. ${errors.join(' | ')}`);
+        }
+        
+        // 后端代理是唯一支持的方式
+        throw new Error('Direct API calls not supported. Please set LLM_CONFIG.useProxy = true');
+    }
+
+    displayReading(readingTextElement, question, cardsStr, interpretation) {
+        const fullText = `你的问题：${question}\n\n牌阵指引：\n${cardsStr}\n\n${'─'.repeat(40)}\n\n${interpretation}`;
+        
+        // 设置文本
+        readingTextElement.textContent = fullText;
+        
+        // 显示重开按钮
+        new TWEEN.Tween(document.getElementById('restart-btn').style)
+            .to({ opacity: 1 }, 500).start();
+    }
+
+    // ... (generateMagicCursorTexture, generateCardTexture, loadLocalBack, createFrontTexture, initThree, initBackgroundStars, initAura, updateAura 保持不变)
+    generateMagicCursorTexture() {
+        const c = document.createElement('canvas'); c.width = 256; c.height = 256; const ctx = c.getContext('2d');
+        const cx = 128, cy = 128; ctx.strokeStyle = '#d4af37'; ctx.shadowBlur = 10; ctx.shadowColor = '#d4af37';
+        ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, 100, 0, Math.PI*2); ctx.stroke();
+        ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, 90, 0, Math.PI*2); ctx.stroke();
+        ctx.beginPath(); for(let i=0; i<3; i++) { const a = (i * 120) * Math.PI/180; const x = cx + Math.cos(a)*90; const y = cy + Math.sin(a)*90; if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); } ctx.closePath(); ctx.stroke();
+        ctx.beginPath(); for(let i=0; i<3; i++) { const a = (i * 120 + 60) * Math.PI/180; const x = cx + Math.cos(a)*90; const y = cy + Math.sin(a)*90; if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); } ctx.closePath(); ctx.stroke();
+        ctx.font = '20px serif'; ctx.fillStyle = '#d4af37'; ctx.textAlign='center'; ctx.fillText('⚡', cx, cy+8);
+        return new THREE.CanvasTexture(c);
+    }
+    generateCardTexture() { const c = document.createElement('canvas'); c.width = 256; c.height = 400; const ctx = c.getContext('2d'); ctx.fillStyle = '#0a0a0a'; ctx.fillRect(0,0,256,400); ctx.strokeStyle = '#d4af37'; ctx.lineWidth = 10; ctx.strokeRect(10,10,236,380); ctx.beginPath(); ctx.arc(128, 200, 60, 0, Math.PI*2); ctx.stroke(); return new THREE.CanvasTexture(c); }
+    loadLocalBack() { 
+        const basePath = getBasePath();
+        const backPath = `${basePath}tarot-card-back.jpg`;
+        console.log('Loading card back:', backPath, 'from basePath:', basePath); // 调试信息
+        this.texLoader.load(backPath, (tex) => { 
+            this.backTexture = tex; 
+            this.cards.forEach(group => { 
+                group.children[0].material.map = tex; 
+                group.children[0].material.needsUpdate = true; 
+            }); 
+        }, undefined, (err) => console.warn("未找到牌背图片:", backPath, err)); 
+    }
+    createFrontTexture(data) { const c = document.createElement('canvas'); c.width = 512; c.height = 800; const ctx = c.getContext('2d'); ctx.fillStyle = '#f5f0e1'; ctx.fillRect(0,0,512,800); ctx.strokeStyle = '#333'; ctx.lineWidth = 15; ctx.strokeRect(20,20,472,760); ctx.fillStyle = '#111'; ctx.textAlign = 'center'; ctx.font = 'bold 50px serif'; ctx.fillText(data.e, 256, 300); ctx.font = '30px sans-serif'; ctx.fillStyle = '#555'; ctx.fillText(data.n, 256, 360); return new THREE.CanvasTexture(c); }
+    initThree() { this.scene = new THREE.Scene(); this.camera = new THREE.PerspectiveCamera(60, this.w/this.h, 0.1, 100); this.camera.position.set(0, 0, CONFIG.cameraZ); this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false }); this.renderer.setSize(this.w, this.h); this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); this.renderer.outputEncoding = THREE.LinearEncoding; this.container.appendChild(this.renderer.domElement); this.scene.add(new THREE.AmbientLight(0xffffff, 1.0)); this.preloadCardImages(); }
+    preloadCardImages() {
+        const uniqueImages = [...new Set(this.tarotDeck.map(card => card.url))];
+        
+        uniqueImages.forEach(url => {
+            const fullPath = getImg(url);
+            this.texLoader.load(fullPath, (tex) => {
+                this.cardTextureCache.set(url, tex);
+                console.log(`预加载纹理: ${url}`);
+            }, undefined, () => {
+                console.warn(`预加载纹理失败: ${fullPath}`);
+            });
+        });
+    }
+    initBackgroundStars() { const count = 1500; const geo = new THREE.BufferGeometry(); const pos = []; for(let i=0; i<count; i++) pos.push((Math.random()-0.5)*150, (Math.random()-0.5)*100, (Math.random()-0.5)*80-40); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); const mat = new THREE.PointsMaterial({ color: 0x888888, size: 2, sizeAttenuation: false, transparent: true, opacity: 0.8 }); this.bgStars = new THREE.Points(geo, mat); this.scene.add(this.bgStars); }
+    initAura() { const pCount = AURA_PARAMS.count; const geo = new THREE.BufferGeometry(); const pos = []; for(let i=0; i<pCount; i++) { const th = Math.random() * Math.PI * 2; const rx = AURA_PARAMS.radiusX + Math.random() * AURA_PARAMS.width; const ry = AURA_PARAMS.radiusY + Math.random() * AURA_PARAMS.width; pos.push(Math.cos(th)*rx, Math.sin(th)*ry, (Math.random()-0.5)*0.5); } geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); const mat = new THREE.PointsMaterial({ color: AURA_PARAMS.color, size: AURA_PARAMS.size, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }); this.aura = new THREE.Points(geo, mat); this.scene.add(this.aura); }
+    updateAura() { if(!this.aura) return; this.aura.rotation.z += AURA_PARAMS.speed; if (this.gestureState === 'browsing' && this.hoveredCard) { this.aura.position.copy(this.hoveredCard.position); this.aura.position.z += AURA_PARAMS.zOffset; this.aura.rotation.y = this.hoveredCard.rotation.y; this.aura.material.opacity += (AURA_PARAMS.opacity - this.aura.material.opacity) * 0.1; } else { this.aura.material.opacity += (0 - this.aura.material.opacity) * 0.2; } }
+    initCursor() { const tex = this.generateMagicCursorTexture(); this.cursorMesh = new THREE.Mesh( new THREE.PlaneGeometry(0.6, 0.6), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.8, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthTest: false }) ); this.cursorMesh.visible = false; this.scene.add(this.cursorMesh); this.raycaster = new THREE.Raycaster(); }
+
+    initCards() {
+        const geo = new THREE.PlaneGeometry(2.0, 3.2);
+        const count = this.tarotDeck.length;
+        const backMat = new THREE.MeshBasicMaterial({ map: this.backTexture, color: 0xffffff, side: THREE.FrontSide });
+        const frontMat = new THREE.MeshBasicMaterial({ color: 0x111111, side: THREE.FrontSide });
+
+        for (let i = 0; i < count; i++) {
+            const group = new THREE.Group();
+            const back = new THREE.Mesh(geo, backMat); back.position.z = 0.01; back.rotation.y = 0;
+            const front = new THREE.Mesh(geo, frontMat); front.position.z = -0.01; front.rotation.y = Math.PI;
+            group.add(back); group.add(front);
+            
+            // 初始在屏幕外，visible false
+            group.visible = false;
+            group.userData = { id: i, info: this.tarotDeck[i], baseX: (i - count/2) * CONFIG.spreadWidth };
+            this.scene.add(group);
+            this.cards.push(group);
+        }
+    }
+
+    updateLayout() {
+        if (this.gameState !== 'playing') return; // 只在游戏阶段更新
+        if (this.gestureState === 'revealed' || this.gestureState === 'burning') return;
+        
+        this.scrollOffset += (this.targetScrollOffset - this.scrollOffset) * 0.1;
+        if(this.cursorMesh.visible) this.cursorMesh.rotation.z -= 0.02;
+
+        this.cards.forEach((card) => {
+            const worldX = card.userData.baseX + this.scrollOffset;
+            const dist = Math.abs(worldX);
+            if (dist > 8.0) { card.visible = false; return; }
+            card.visible = true;
+
+            card.position.x = worldX;
+            card.position.z = -Math.pow(dist * 0.25, 1.5);
+            card.rotation.y = Math.max(-0.5, Math.min(0.5, -worldX * 0.06));
+
+            if (this.gestureState === 'browsing' && this.hoveredCard === card) {
+                card.scale.setScalar(1.1); card.position.z += 1.5; card.rotation.y = 0;
+            } else {
+                card.scale.setScalar(1.0);
+            }
+        });
+    }
+
+    handleGestures() {
+        if (this.gameState !== 'playing') return;
+        // 添加微妙的颜色变化提示
+        const statusItems = document.querySelectorAll('.status-item');
+            statusItems.forEach(item => {
+                if (item.classList.contains('active')) {
+                    item.style.textShadow = '0 0 20px rgba(212, 175, 55, 0.8)';
+                } else {
+                    item.style.textShadow = 'none';
+                }
+            });
+
+        if (this.gestureState === 'burning') return;
+        
+        ['st-browse', 'st-grab', 'st-release'].forEach(id => document.getElementById(id).classList.remove('active'));
+
+        if (this.gestureState === 'browsing') {
+            if (this.gestureMode === 'open') {
+                document.getElementById('st-browse').classList.add('active');
+                if (Math.abs(this.handPos.x) > 0.3) {
+                    const speed = CONFIG.scrollSpeed;
+                    if (this.handPos.x < 0) this.targetScrollOffset += speed * (Math.abs(this.handPos.x)*1.5);
+                    else this.targetScrollOffset -= speed * (Math.abs(this.handPos.x)*1.5);
+                    
+                    const limit = (this.cards.length/2)*CONFIG.spreadWidth + 2;
+                    this.targetScrollOffset = Math.max(-limit, Math.min(limit, this.targetScrollOffset));
+                    this.cursorMesh.visible = false; this.hoveredCard = null;
+                } else {
+                    this.cursorMesh.visible = true;
+                    this.cursorPos.lerp(this.targetCursorPos, CONFIG.cursorSmooth);
+                    const vec = new THREE.Vector3(this.cursorPos.x, this.cursorPos.y, 0.5); vec.unproject(this.camera);
+                    const dir = vec.sub(this.camera.position).normalize();
+                    const pos = this.camera.position.clone().add(dir.multiplyScalar(-this.camera.position.z/dir.z));
+                    this.cursorMesh.position.copy(pos);
+                    
+                    this.raycaster.setFromCamera(this.cursorPos, this.camera);
+                    const intersects = this.raycaster.intersectObjects(this.cards.filter(c => c.visible), true);
+                    if (intersects.length > 0) {
+                        let target = intersects[0].object;
+                        while (target.parent && target.userData.id === undefined) target = target.parent;
+                        this.hoveredCard = this.cards.includes(target) ? target : null;
+                    } else this.hoveredCard = null;
+                }
+            } 
+            else if (this.gestureMode === 'fist') {
+                document.getElementById('st-grab').classList.add('active');
+                if (this.hoveredCard && this.cards.includes(this.hoveredCard)) this.revealCard(this.hoveredCard);
+            }
+        } 
+        else if (this.gestureState === 'revealed') {
+            document.getElementById('st-release').classList.add('active');
+            if (this.gestureMode === 'open' && Date.now() >= this.revealLockUntil) {
+                this.burnCard();
+            }
+        }
+    }
+
+    revealCard(cardGroup) {
+        if (!this.cards.includes(cardGroup)) return;
+        if (this.gestureState === 'revealed') return;
+        this.gestureState = 'revealed'; 
+        this.revealLockUntil = Date.now() + 2200;
+        this.revealedCard = cardGroup; this.cursorMesh.visible = false; this.hoveredCard = null;
+
+        document.getElementById('burn-hint').style.display = 'block';
+
+        const data = cardGroup.userData.info;
+        const frontMesh = cardGroup.children[1];
+        const cachedTexture = this.cardTextureCache.get(data.url);
+        
+        frontMesh.material = new THREE.MeshBasicMaterial({
+            side: THREE.FrontSide,
+            color: 0xffffff,
+            map: cachedTexture || this.createFrontTexture(data)
+        });
+        frontMesh.material.needsUpdate = true;
+
+        // 立即从牌堆中移除，避免重复抽取
+        const idx = this.cards.indexOf(cardGroup);
+        if (idx > -1) {
+            this.cards.splice(idx, 1);
+            // 重新计算剩余牌的 baseX 位置
+            this.cards.forEach((group, i) => {
+                group.userData.baseX = (i - this.cards.length/2) * CONFIG.spreadWidth;
+            });
+        }
+
+        // 立即保存牌的信息（同步执行），确保后续可以访问
+        this.drawnCards.push({ name: data.n, isReversed: data.isReversed, img: data.url });
+        
+        if (!cachedTexture) {
+            this.texLoader.load(getImg(data.url), (tex) => { 
+                this.cardTextureCache.set(data.url, tex);
+                frontMesh.material.map = tex; frontMesh.material.needsUpdate = true; 
+            }, undefined, () => { 
+                // 图片加载失败，使用占位纹理
+                frontMesh.material.map = this.createFrontTexture(data); frontMesh.material.needsUpdate = true; 
+                // 更新已保存的记录，保留URL以便历史记录显示
+                const lastCard = this.drawnCards[this.drawnCards.length - 1];
+                if (lastCard && lastCard.name === data.n) {
+                    lastCard.img = data.url; // 仍然保留URL，让addToHistory尝试加载
+                }
+            });
+        }
+
+        const targetRotZ = data.isReversed ? Math.PI : 0;
+
+        new TWEEN.Tween(cardGroup.position).to({ x: 0, y: 0, z: CONFIG.cameraZ - 4 }, 1000).easing(TWEEN.Easing.Cubic.Out).start();
+        new TWEEN.Tween(cardGroup.rotation).to({ x: 0, y: Math.PI, z: targetRotZ }, 1000).easing(TWEEN.Easing.Back.Out).start();
+
+        this.cards.forEach(c => { new TWEEN.Tween(c.position).to({ z: -50 }, 800).start(); });
+        setTimeout(() => {
+            const revText = data.isReversed ? " (逆位)" : "";
+            document.getElementById('card-name').innerText = data.n + revText; 
+            document.getElementById('card-sub').innerText = data.e; 
+            document.getElementById('card-desc').innerText = data.m; 
+            document.getElementById('card-sub').style.display = 'block';
+            document.getElementById('card-desc').style.display = 'block';
+            document.getElementById('card-detail').style.opacity = 1;
+        }, 800);
+    }
+
+    addToHistory(imgUrl, isReversed, cardName) {
+        const container = document.getElementById('history-bar');
+        const slot = document.createElement('div');
+        slot.className = `history-slot ${isReversed ? 'reversed' : ''}`;
+        const imgBox = document.createElement('div');
+        imgBox.className = 'history-img-box';
+        
+        // 始终创建img元素，即使imgUrl为空也创建（用于显示占位符或调试）
+        const img = document.createElement('img');
+        if (imgUrl) {
+            // 使用 getImg 函数构建路径（与卡牌加载逻辑保持一致）
+            const fullPath = getImg(imgUrl);
+            img.src = fullPath;
+            console.log('Loading history image:', fullPath); // 调试信息
+            // 添加错误处理，加载失败时显示占位符
+            img.onerror = function() {
+                console.warn(`图片加载失败: ${fullPath}`);
+                // 显示一个简单的占位符
+                this.style.display = 'none';
+                // 或者在imgBox中显示一个占位符div
+                const placeholder = document.createElement('div');
+                placeholder.style.cssText = 'width:100%;height:100%;background:rgba(212,175,55,0.1);display:flex;align-items:center;justify-content:center;';
+                placeholder.innerHTML = '?';
+                imgBox.appendChild(placeholder);
+            };
+        } else {
+            // 如果没有URL，创建一个透明的占位符
+            img.style.opacity = '0.3';
+            img.style.backgroundColor = 'rgba(212, 175, 55, 0.1)';
+        }
+        imgBox.appendChild(img);
+        slot.appendChild(imgBox);
+        
+        const textBox = document.createElement('div');
+        textBox.className = 'history-text';
+        textBox.innerHTML = cardName + (isReversed ? '<br><span class="rev-mark">逆位</span>' : '');
+        slot.appendChild(textBox);
+        container.appendChild(slot);
+    }
+
+    burnCard() {
+        if (!this.revealedCard || this.gestureState === 'burning') return;
+        this.gestureState = 'burning';
+        
+        // 这里的“burn”其实是归位逻辑
+        this.createAshEffect(this.revealedCard.position);
+        
+        // 飞向左上角
+        new TWEEN.Tween(this.revealedCard.position)
+            .to({ x: -8, y: 5, z: -10 }, 800)
+            .easing(TWEEN.Easing.Cubic.In)
+            .start();
+            
+        new TWEEN.Tween(this.revealedCard.scale)
+            .to({ x: 0, y: 0, z: 0 }, 800)
+            .onComplete(() => {
+                this.revealedCard.visible = false; 
+                this.scene.remove(this.revealedCard);
+                
+                // 添加到 UI 历史栏
+                const lastDrawn = this.drawnCards[this.drawnCards.length - 1];
+                this.addToHistory(lastDrawn.img, lastDrawn.isReversed, lastDrawn.name);
+
+                // 牌已经在 revealCard() 时从 this.cards 中移除了，这里只需要清理引用
+                this.revealedCard = null;
+                this.hoveredCard = null;
+                
+                // UI 重置
+                document.getElementById('card-detail').style.opacity = 0;
+                document.getElementById('card-sub').style.display = 'none';
+                document.getElementById('card-desc').style.display = 'none';
+                document.getElementById('burn-hint').style.display = 'none';
+
+                // 判断是否结束
+                if (this.drawnCards.length >= this.maxCards) {
+                    this.finishSession();
+                } else {
+                    this.gestureState = 'browsing';
+                }
+            })
+            .start();
+    }
+
+    createAshEffect(pos) {
+        const count = 3000; const geo = new THREE.BufferGeometry(); const positions = [], randoms = [], colors = []; const color = new THREE.Color(0xd4af37);
+        for(let i=0; i<count; i++) { positions.push((Math.random()-0.5)*2.0, (Math.random()-0.5)*3.2, 0); randoms.push(Math.random()); colors.push(color.r, color.g, color.b); }
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3)); geo.setAttribute('aRandom', new THREE.Float32BufferAttribute(randoms, 1)); geo.setAttribute('aColor', new THREE.Float32BufferAttribute(colors, 3));
+        const material = new THREE.ShaderMaterial({ vertexShader: ashVertexShader, fragmentShader: ashFragmentShader, uniforms: { uTime: { value: 0 }, uSpeed: { value: 1.5 }, uSize: { value: 4.0 }, uSpread: { value: 0.5 } }, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+        const points = new THREE.Points(geo, material); points.position.copy(pos); this.scene.add(points); this.particles.push({ mesh: points, age: 0 });
+    }
+
+    initMediaPipe() {
+        const vid = document.getElementById('input-video'); const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
+        hands.onResults(results => {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const lm = results.multiHandLandmarks[0];
+                const idx = lm[8], thb = lm[4], wrs = lm[0], mid = lm[12], rng = lm[16], pnk = lm[20], idx_mcp = lm[5], pnk_mcp = lm[17];
+                this.handPos.x = (1 - lm[9].x) * 2 - 1; this.targetCursorPos.x = (1 - idx.x) * 2 - 1; this.targetCursorPos.y = -(idx.y * 2 - 1);
+                const dist = (a, b) => Math.sqrt(Math.pow(a.x-b.x,2) + Math.pow(a.y-b.y,2));
+                const pinchDist = dist(idx, thb);
+                const isFist = dist(idx, wrs)<0.3 && dist(mid, wrs)<0.25 && dist(rng, wrs)<0.25 && dist(pnk, wrs)<0.25;
+                const isPinch = pinchDist < 0.05;
+                const isOpen = dist(idx, wrs)>0.3 && dist(mid, wrs)>0.3 && dist(rng, wrs)>0.3 && dist(pnk, wrs)>0.3;
+                const isPoint = dist(idx, wrs)>0.3 && dist(mid, wrs)<0.25; 
+                if (isFist) this.gestureMode = 'fist'; else if (isPinch || isPoint) this.gestureMode = 'point'; else if (isOpen) this.gestureMode = 'open'; else this.gestureMode = 'none';
+            } else this.gestureMode = 'none';
+        });
+        const camera = new Camera(vid, { onFrame: async () => { await hands.send({image: vid}); }, width: 320, height: 240 });
+        camera.start();
+    }
+
+    initMouse() {
+        window.addEventListener('mousemove', e => { const x = (e.clientX/this.w)*2-1; const y = -(e.clientY/this.h)*2+1; this.handPos.x = x; this.targetCursorPos.set(x, y); if (Math.abs(x)>0.4) this.gestureMode='open'; else this.gestureMode='point'; });
+        window.addEventListener('mousedown', e => { if(e.button===0) this.gestureMode='fist'; }); 
+        window.addEventListener('mouseup', () => { this.gestureMode='open'; }); 
+        window.addEventListener('contextmenu', e => e.preventDefault());
+    }
+
+    animate() {
+        requestAnimationFrame(() => this.animate()); TWEEN.update(); this.updateLayout(); this.updateAura(); this.handleGestures();
+        if(this.bgStars) this.bgStars.rotation.y += 0.0002;
+        for (let i = this.particles.length - 1; i >= 0; i--) { const p = this.particles[i]; p.age += 0.015; p.mesh.material.uniforms.uTime.value = p.age; if (p.age > 3.0) { this.scene.remove(p.mesh); this.particles.splice(i, 1); } }
+        this.renderer.render(this.scene, this.camera);
+    }
+}
+let tarotApp = null;
+window.restartTarotSession = () => {
+    if (tarotApp) tarotApp.restartSession();
+};
+window.onload = () => {
+    tarotApp = new TarotSpace();
+};
+</script>
+</body>
+</html>
