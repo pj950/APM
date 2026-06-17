@@ -590,7 +590,10 @@ export function FaceTrackingDemo() {
               key={confirmFx.key}
               className={`face-demo-laser face-demo-laser--${confirmFx.side === 0 ? 'left' : 'right'}`}
               aria-hidden="true"
-            />
+            >
+              <span className="face-demo-laser__beam" />
+              <span className="face-demo-laser__flash" />
+            </div>
           ) : null}
 
           <div className="face-demo-question-options">

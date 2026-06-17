@@ -5978,23 +5978,59 @@ body {
   position: absolute;
   top: 52%;
   left: 50%;
-  z-index: 4;
+  z-index: 6;
   width: min(36vw, 22rem);
-  height: 5px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, rgba(185, 255, 255, 0), rgba(83, 244, 198, 0.96) 38%, rgba(83, 244, 198, 0.25) 100%);
-  box-shadow: 0 0 10px rgba(83, 244, 198, 0.74), 0 0 28px rgba(0, 204, 255, 0.5);
+  height: 16px;
   transform-origin: left center;
-  animation: face-demo-laser-fire 340ms ease-out forwards;
   pointer-events: none;
 }
 
 .face-demo-laser--left {
-  transform: translate(-100%, -50%) rotate(-8deg);
+  transform: translate(-100%, -50%) rotate(-10deg);
+  transform-origin: right center;
 }
 
 .face-demo-laser--right {
-  transform: translate(0%, -50%) rotate(8deg);
+  transform: translate(0%, -50%) rotate(10deg);
+  transform-origin: left center;
+}
+
+.face-demo-laser__beam {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 5px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(185, 255, 255, 0), rgba(83, 244, 198, 0.98) 38%, rgba(83, 244, 198, 0.2) 100%);
+  box-shadow: 0 0 10px rgba(83, 244, 198, 0.78), 0 0 30px rgba(0, 204, 255, 0.56);
+  transform: translateY(-50%);
+  transform-origin: left center;
+  animation: face-demo-laser-fire 420ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.face-demo-laser--left .face-demo-laser__beam {
+  transform-origin: right center;
+}
+
+.face-demo-laser__flash {
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(198, 255, 244, 0.95) 0%, rgba(83, 244, 198, 0.65) 55%, rgba(83, 244, 198, 0) 100%);
+  box-shadow: 0 0 14px rgba(83, 244, 198, 0.85), 0 0 28px rgba(83, 244, 198, 0.58);
+  transform: translateY(-50%);
+  animation: face-demo-laser-flash 300ms ease-out forwards;
+}
+
+.face-demo-laser--left .face-demo-laser__flash {
+  right: 0;
+}
+
+.face-demo-laser--right .face-demo-laser__flash {
+  left: 0;
 }
 
 .face-demo-option {
@@ -6113,20 +6149,37 @@ body {
 @keyframes face-demo-laser-fire {
   0% {
     opacity: 0;
-    transform: scaleX(0.1);
+    transform: translateY(-50%) scaleX(0.08);
     filter: blur(2px);
   }
 
   45% {
     opacity: 1;
-    transform: scaleX(1);
+    transform: translateY(-50%) scaleX(1);
     filter: blur(0);
   }
 
   100% {
     opacity: 0;
-    transform: scaleX(1.08);
+    transform: translateY(-50%) scaleX(1.04);
     filter: blur(1px);
+  }
+}
+
+@keyframes face-demo-laser-flash {
+  0% {
+    opacity: 0;
+    transform: translateY(-50%) scale(0.3);
+  }
+
+  40% {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-50%) scale(1.3);
   }
 }
 
