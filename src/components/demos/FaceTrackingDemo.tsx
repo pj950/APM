@@ -494,7 +494,7 @@ export function FaceTrackingDemo() {
           faceEuler.setFromQuaternion(faceQuaternion, 'YXZ');
           const yaw = -faceEuler.y;
           const now = performance.now();
-          const nextOption = yaw < -FACE_SELECT_YAW_THRESHOLD ? 0 : yaw > FACE_SELECT_YAW_THRESHOLD ? 1 : null;
+          const nextOption = yaw > FACE_SELECT_YAW_THRESHOLD ? 0 : yaw < -FACE_SELECT_YAW_THRESHOLD ? 1 : null;
 
           if (faceYawSampleFrameRef.current % 4 === 0) {
             setFaceYaw(yaw);
