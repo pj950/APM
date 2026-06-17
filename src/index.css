@@ -5974,6 +5974,29 @@ body {
   pointer-events: none;
 }
 
+.face-demo-laser {
+  position: absolute;
+  top: 52%;
+  left: 50%;
+  z-index: 4;
+  width: min(36vw, 22rem);
+  height: 5px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(185, 255, 255, 0), rgba(83, 244, 198, 0.96) 38%, rgba(83, 244, 198, 0.25) 100%);
+  box-shadow: 0 0 10px rgba(83, 244, 198, 0.74), 0 0 28px rgba(0, 204, 255, 0.5);
+  transform-origin: left center;
+  animation: face-demo-laser-fire 340ms ease-out forwards;
+  pointer-events: none;
+}
+
+.face-demo-laser--left {
+  transform: translate(-100%, -50%) rotate(-8deg);
+}
+
+.face-demo-laser--right {
+  transform: translate(0%, -50%) rotate(8deg);
+}
+
 .face-demo-option {
   --face-select-progress: 0deg;
   pointer-events: auto;
@@ -6014,6 +6037,38 @@ body {
   box-shadow: 0 0 32px rgba(83, 244, 198, 0.3), 0 14px 44px rgba(0, 0, 0, 0.56);
 }
 
+.face-demo-option--shatter {
+  animation: face-demo-option-shatter 720ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.face-demo-option__shard {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0;
+  background: linear-gradient(120deg, rgba(201, 255, 246, 0.65), rgba(83, 244, 198, 0.04) 60%);
+}
+
+.face-demo-option--shatter .face-demo-option__shard {
+  opacity: 1;
+}
+
+.face-demo-option--shatter .face-demo-option__shard--one {
+  clip-path: polygon(0 0, 38% 0, 54% 42%, 18% 56%);
+  animation: face-demo-shard-burst-one 720ms ease-out forwards;
+}
+
+.face-demo-option--shatter .face-demo-option__shard--two {
+  clip-path: polygon(42% 0, 100% 0, 100% 54%, 62% 46%);
+  animation: face-demo-shard-burst-two 720ms ease-out forwards;
+}
+
+.face-demo-option--shatter .face-demo-option__shard--three {
+  clip-path: polygon(10% 60%, 64% 48%, 100% 60%, 100% 100%, 0 100%);
+  animation: face-demo-shard-burst-three 720ms ease-out forwards;
+}
+
 .face-demo-option__index,
 .face-demo-option__hold {
   position: relative;
@@ -6052,6 +6107,93 @@ body {
   font-size: 0.72rem;
   letter-spacing: 0.12em;
   box-shadow: 0 0 24px rgba(83, 244, 198, 0.22);
+  animation: face-demo-feedback-pop 460ms ease-out both;
+}
+
+@keyframes face-demo-laser-fire {
+  0% {
+    opacity: 0;
+    transform: scaleX(0.1);
+    filter: blur(2px);
+  }
+
+  45% {
+    opacity: 1;
+    transform: scaleX(1);
+    filter: blur(0);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scaleX(1.08);
+    filter: blur(1px);
+  }
+}
+
+@keyframes face-demo-option-shatter {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: brightness(1);
+  }
+
+  52% {
+    transform: translate3d(0, 0, 0) scale(1.01);
+    filter: brightness(1.4);
+  }
+
+  100% {
+    transform: translate3d(0, 7px, 0) scale(0.96);
+    opacity: 0.72;
+    filter: brightness(0.76);
+  }
+}
+
+@keyframes face-demo-shard-burst-one {
+  0% {
+    transform: translate3d(0, 0, 0);
+    opacity: 0.84;
+  }
+
+  100% {
+    transform: translate3d(-24px, -18px, 0) rotate(-11deg);
+    opacity: 0;
+  }
+}
+
+@keyframes face-demo-shard-burst-two {
+  0% {
+    transform: translate3d(0, 0, 0);
+    opacity: 0.82;
+  }
+
+  100% {
+    transform: translate3d(26px, -16px, 0) rotate(9deg);
+    opacity: 0;
+  }
+}
+
+@keyframes face-demo-shard-burst-three {
+  0% {
+    transform: translate3d(0, 0, 0);
+    opacity: 0.8;
+  }
+
+  100% {
+    transform: translate3d(0, 22px, 0) rotate(6deg);
+    opacity: 0;
+  }
+}
+
+@keyframes face-demo-feedback-pop {
+  0% {
+    transform: translate(-50%, -10px) scale(0.92);
+    opacity: 0;
+  }
+
+  100% {
+    transform: translate(-50%, 0) scale(1);
+    opacity: 1;
+  }
 }
 
 .face-demo-question-panel {

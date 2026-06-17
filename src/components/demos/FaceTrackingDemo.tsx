@@ -206,6 +206,7 @@ export function FaceTrackingDemo() {
   const [answers, setAnswers] = useState<(0 | 1)[]>(Array(FACE_QUESTIONS.length).fill(-1));
   const [lookOption, setLookOption] = useState<0 | 1 | null>(null);
   const [confirmedOption, setConfirmedOption] = useState<0 | 1 | null>(null);
+  const [confirmFx, setConfirmFx] = useState<{ side: 0 | 1; key: number } | null>(null);
   const [holdProgress, setHoldProgress] = useState(0);
   const [faceYaw, setFaceYaw] = useState(0);
 
@@ -216,6 +217,7 @@ export function FaceTrackingDemo() {
   const selectionOptionRef = useRef<0 | 1 | null>(null);
   const selectionLockedRef = useRef(false);
   const faceYawSampleFrameRef = useRef(0);
+  const confirmFxKeyRef = useRef(0);
 
   const question = FACE_QUESTIONS[currentIdx];
   const [presets] = useState<VoicePresetKey[]>(() => {
@@ -305,6 +307,8 @@ export function FaceTrackingDemo() {
     if (selectionLockedRef.current) return;
     selectionLockedRef.current = true;
     setConfirmedOption(value);
+    confirmFxKeyRef.current += 1;
+    setConfirmFx({ side: value, key: confirmFxKeyRef.current });
     stopSpeaking();
     setMirrorSpeaking(false);
 
@@ -323,6 +327,7 @@ export function FaceTrackingDemo() {
         currentIdxRef.current = activeIdx + 1;
         setCurrentIdx(activeIdx + 1);
         setConfirmedOption(null);
+        setConfirmFx(null);
         selectionLockedRef.current = false;
       }, FACE_SELECT_CONFIRM_PAUSE_MS);
     } else {
@@ -342,6 +347,7 @@ export function FaceTrackingDemo() {
     currentIdxRef.current = previous;
     selectionLockedRef.current = false;
     setConfirmedOption(null);
+    setConfirmFx(null);
     setLookOption(null);
     setHoldProgress(0);
     setCurrentIdx(previous);
@@ -350,6 +356,7 @@ export function FaceTrackingDemo() {
   const handleCancel = useCallback(() => {
     stopSpeaking();
     setMirrorSpeaking(false);
+    setConfirmFx(null);
     useAppStore.getState().setActiveDimensionKey(null);
     setStage('STANDBY');
   }, [setMirrorSpeaking, setStage]);
@@ -578,18 +585,34 @@ export function FaceTrackingDemo() {
 
       {status === 'running' ? (
         <>
+          {confirmFx ? (
+            <div
+              key={confirmFx.key}
+              className={`face-demo-laser face-demo-laser--${confirmFx.side === 0 ? 'left' : 'right'}`}
+              aria-hidden="true"
+            />
+          ) : null}
+
           <div className="face-demo-question-options">
             {question.options.map((option, index) => {
               const isActive = lookOption === index;
               const isConfirmed = confirmedOption === index;
+              const isShattering = isConfirmed;
               return (
                 <button
                   key={`${question.id}-${option.value}`}
                   type="button"
-                  className={`face-demo-option face-demo-option--${index === 0 ? 'left' : 'right'}${isActive ? ' face-demo-option--active' : ''}${isConfirmed ? ' face-demo-option--confirmed' : ''}`}
+                  className={`face-demo-option face-demo-option--${index === 0 ? 'left' : 'right'}${isActive ? ' face-demo-option--active' : ''}${isConfirmed ? ' face-demo-option--confirmed' : ''}${isShattering ? ' face-demo-option--shatter' : ''}`}
                   style={isActive ? { '--face-select-progress': `${holdProgress * 360}deg` } as CSSProperties : undefined}
                   onClick={() => handleAnswer(option.value)}
                 >
+                  {isShattering ? (
+                    <>
+                      <span className="face-demo-option__shard face-demo-option__shard--one" />
+                      <span className="face-demo-option__shard face-demo-option__shard--two" />
+                      <span className="face-demo-option__shard face-demo-option__shard--three" />
+                    </>
+                  ) : null}
                   <span className="face-demo-option__index">{index === 0 ? '← 看向左侧选择' : '看向右侧选择 →'}</span>
                   <span className="face-demo-option__label">{option.label}</span>
                   {isConfirmed ? (

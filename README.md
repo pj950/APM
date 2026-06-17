@@ -77,6 +77,7 @@ npm run build      # 生产构建
 - 使用 [`mind-ar`](https://github.com/hiukim/mind-ar-js)（MIT，基于 TensorFlow.js + MediaPipe face mesh）独占摄像头并自带 Three.js 渲染。
 - 进入 `FACE_DEMO` 后，CV 主管线（`useCVCapture`）会主动让出摄像头（`FACE_DEMO` 已从 `isCameraStageActive` 移除），避免与 MindAR 抢占设备。
 - `FACE_DEMO` 已集成 6 题二选一答题流程：页面保留 MindAR face mesh 面具，同时在顶部显示左右选项、底部显示当前题；不使用举手识别，直接读取 MindAR 面部网格的头部 yaw，用户看向左侧/右侧并保持约 1 秒即可确认对应选项，答完后写入 6 维人格并进入生成阶段。
+- `FACE_DEMO` 的确认反馈已升级为“看向即开火”：头部朝向达到阈值并完成保持后，会从中心朝被选方向打出一道短促激光，同时被命中的答案卡触发崩碎动画，再进入下一题，避免无感跳题。
 - **直接复用 `dilmerv/FaceTrackingDemo` 的 Unity 原始面具贴图**：该 Unity 项目的“面具”并不是 3D 模型，而是贴在 AR 人脸网格上的 2D 面部贴图（`Assets/Textures/` 下的 `cartoon` / `humanface` / `virus1` / `virus2` / `superheros` / `uv`）。这些贴图已下载到 `public/unity-face/textures/`；当前自动轮换只启用 `cartoon` / `superheros` / `uv`，暂不轮换 `humanface` / `virus1` / `virus2`。
 - 实现上用 MindAR 的人脸网格（`addFaceMesh()`）作为载体，把这些贴图 UV 映射到实时追踪到的脸上；所有贴图预加载，切换时只替换材质贴图 uniform，每 5 秒自动轮换一张（对齐 Unity 里 `ToggleFace` 的切换演示），零延迟。
 - `cartoon` 路径使用了自定义 ShaderMaterial 复刻 `CartoonAnimated`：核心为 UV 绕中心随时间连续旋转，并做 ×2 emission 提亮。
