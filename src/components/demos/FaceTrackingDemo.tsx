@@ -13,11 +13,13 @@
  * - 原项目材质是 Opaque + Alpha=1，眼睛/嘴巴不是透明挖洞；Web 版同样保留整张动态 face mesh 覆盖。
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { MindARThree } from 'mind-ar/dist/mindar-face-three.prod.js';
 import { useAppStore } from '../../store/useAppStore';
+import { prefetchTTS, speakWithPreset, stopSpeaking, VOICE_PRESETS } from '../../services/tts';
+import type { PersonalityDimensions, VoicePresetKey } from '../../types';
 
 /** 贴图自动轮换间隔（毫秒），对齐 Unity ToggleFace 演示 */
 const FACE_SWITCH_INTERVAL_MS = 5000;
@@ -29,9 +31,90 @@ const UNITY_FACE_TEXTURES: Array<{ file: string; label: string }> = [
   { file: 'uv.png', label: 'UV Debug' },
 ];
 
+type FaceQuestion = {
+  id: string;
+  text: string;
+  dimensionKey: keyof PersonalityDimensions;
+  options: [
+    { label: string; value: 0 },
+    { label: string; value: 1 },
+  ];
+};
+
+const FACE_QUESTIONS: FaceQuestion[] = [
+  {
+    id: 'q1',
+    text: '如果你的微信钱包会说话，它最可能对你发出什么嘲笑？',
+    dimensionKey: 'capital',
+    options: [
+      { label: '💸 “吃土吃出米其林质感”', value: 0 },
+      { label: '🤑 “呼吸都在狂吸GDP”', value: 1 },
+    ],
+  },
+  {
+    id: 'q2',
+    text: '深夜emo时，你的灵魂通常会漂向哪个终极归宿？',
+    dimensionKey: 'spirit',
+    options: [
+      { label: '🧘 “电子木鱼敲到冒烟”', value: 0 },
+      { label: '🍾 “接着奏乐接着舞”', value: 1 },
+    ],
+  },
+  {
+    id: 'q3',
+    text: '你的大脑在面对高数或复杂说明书时会如何运转？',
+    dimensionKey: 'intellect',
+    options: [
+      { label: '🤪 “脑干缺失，眼神清澈”', value: 0 },
+      { label: '🧠 “量子纠缠，学术风暴”', value: 1 },
+    ],
+  },
+  {
+    id: 'q4',
+    text: '如果必须去参加一个陌生人的社交派对，你会？',
+    dimensionKey: 'social',
+    options: [
+      { label: '🦪 “自闭贝壳，角落抠地”', value: 0 },
+      { label: '🦋 “社牛附体，全场聊遍”', value: 1 },
+    ],
+  },
+  {
+    id: 'q5',
+    text: '看到一张歪了2毫米的画，或者手机上未读的小红点？',
+    dimensionKey: 'order',
+    options: [
+      { label: '🌪 “随缘摆烂，混沌自在”', value: 0 },
+      { label: '📐 “像素对齐，逼死强迫”', value: 1 },
+    ],
+  },
+  {
+    id: 'q6',
+    text: '周末早晨醒来，你全身的电量和生命体征呈现什么状态？',
+    dimensionKey: 'energy',
+    options: [
+      { label: '🔋 “省电咸鱼，安祥躺平”', value: 0 },
+      { label: '⚡ “发电机转世，不知疲倦”', value: 1 },
+    ],
+  },
+];
+
+const FACE_SELECT_HOLD_MS = 1000;
+const FACE_SELECT_YAW_THRESHOLD = 0.2;
+const VOICE_PRESET_KEYS = Object.keys(VOICE_PRESETS) as VoicePresetKey[];
+
 type MindARFaceGeometry = THREE.BufferGeometry & {
   updatePositions?: (landmarks: number[][]) => void;
 };
+
+function pickRandomVoicePreset(current?: VoicePresetKey): VoicePresetKey {
+  const candidates = VOICE_PRESET_KEYS.filter((key) => key !== current);
+  const pool = candidates.length > 0 ? candidates : VOICE_PRESET_KEYS;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function toSpeechLabel(label: string) {
+  return label.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '').trim();
+}
 
 function patchForeheadCoverage(geometry: MindARFaceGeometry) {
   if (!geometry.updatePositions) return;
@@ -109,12 +192,168 @@ function createCartoonAnimatedMaterial(map: THREE.Texture): THREE.MeshStandardMa
 
 export function FaceTrackingDemo() {
   const setStage = useAppStore((s) => s.setStage);
+  const triggerGeneration = useAppStore((s) => s.triggerGeneration);
+  const setVoicePreset = useAppStore((s) => s.setVoicePreset);
+  const setMirrorSpeaking = useAppStore((s) => s.setMirrorSpeaking);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const [status, setStatus] = useState<'loading' | 'running' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [loadProgress, setLoadProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
   const [activeLabel, setActiveLabel] = useState<string>('');
+  const [currentIdx, setCurrentIdx] = useState(0);
+  const [answers, setAnswers] = useState<(0 | 1)[]>(Array(FACE_QUESTIONS.length).fill(-1));
+  const [lookOption, setLookOption] = useState<0 | 1 | null>(null);
+  const [holdProgress, setHoldProgress] = useState(0);
+  const [faceYaw, setFaceYaw] = useState(0);
+
+  const currentIdxRef = useRef(0);
+  const answersRef = useRef<(0 | 1)[]>(Array(FACE_QUESTIONS.length).fill(-1));
+  const commitAnswerRef = useRef<(value: 0 | 1) => void>(() => undefined);
+  const selectionStartAtRef = useRef<number | null>(null);
+  const selectionOptionRef = useRef<0 | 1 | null>(null);
+  const selectionLockedRef = useRef(false);
+  const faceYawSampleFrameRef = useRef(0);
+
+  const question = FACE_QUESTIONS[currentIdx];
+  const [presets] = useState<VoicePresetKey[]>(() => {
+    const list: VoicePresetKey[] = [];
+    let current: VoicePresetKey | undefined = undefined;
+    for (let index = 0; index < FACE_QUESTIONS.length; index += 1) {
+      const next = pickRandomVoicePreset(current);
+      list.push(next);
+      current = next;
+    }
+    return list;
+  });
+
+  useEffect(() => {
+    currentIdxRef.current = currentIdx;
+    useAppStore.getState().setActiveDimensionKey(FACE_QUESTIONS[currentIdx]?.dimensionKey || null);
+    return () => {
+      useAppStore.getState().setActiveDimensionKey(null);
+    };
+  }, [currentIdx]);
+
+  useEffect(() => {
+    answersRef.current = answers;
+  }, [answers]);
+
+  useEffect(() => {
+    FACE_QUESTIONS.forEach((item, index) => {
+      const speechText = [
+        `第 ${index + 1} 题。${item.text}。`,
+        `看向左侧选择左边，${toSpeechLabel(item.options[0].label)}。`,
+        `看向右侧选择右边，${toSpeechLabel(item.options[1].label)}。`,
+        '保持一小段时间即可确认。',
+      ].join(' ');
+      void prefetchTTS(speechText, presets[index]);
+    });
+  }, [presets]);
+
+  const readQuestion = useCallback(() => {
+    const activeQuestion = FACE_QUESTIONS[currentIdxRef.current];
+    if (!activeQuestion) return;
+
+    const presetToUse = presets[currentIdxRef.current];
+    setVoicePreset(presetToUse);
+    const speechText = [
+      `第 ${currentIdxRef.current + 1} 题。${activeQuestion.text}。`,
+      `看向左侧选择左边，${toSpeechLabel(activeQuestion.options[0].label)}。`,
+      `看向右侧选择右边，${toSpeechLabel(activeQuestion.options[1].label)}。`,
+      '保持一小段时间即可确认。',
+    ].join(' ');
+
+    speakWithPreset(
+      speechText,
+      presetToUse,
+      () => setMirrorSpeaking(true),
+      () => setMirrorSpeaking(false),
+    );
+  }, [presets, setMirrorSpeaking, setVoicePreset]);
+
+  useEffect(() => {
+    if (status !== 'running') return;
+
+    const timer = window.setTimeout(() => {
+      readQuestion();
+    }, 80);
+
+    return () => {
+      window.clearTimeout(timer);
+      stopSpeaking();
+      setMirrorSpeaking(false);
+    };
+  }, [currentIdx, readQuestion, setMirrorSpeaking, status]);
+
+  const recordAndGenerate = useCallback((finalAnswers: (0 | 1)[]) => {
+    const dims: PersonalityDimensions = {
+      capital: finalAnswers[0] as 0 | 1,
+      spirit: finalAnswers[1] as 0 | 1,
+      intellect: finalAnswers[2] as 0 | 1,
+      social: finalAnswers[3] as 0 | 1,
+      order: finalAnswers[4] as 0 | 1,
+      energy: finalAnswers[5] as 0 | 1,
+    };
+    useAppStore.setState({ personalityDimensions: dims });
+    window.setTimeout(() => triggerGeneration(), 300);
+  }, [triggerGeneration]);
+
+  const handleAnswer = useCallback((value: 0 | 1) => {
+    if (selectionLockedRef.current) return;
+    selectionLockedRef.current = true;
+    stopSpeaking();
+    setMirrorSpeaking(false);
+
+    const activeIdx = currentIdxRef.current;
+    const nextAnswers = [...answersRef.current];
+    nextAnswers[activeIdx] = value;
+    answersRef.current = nextAnswers;
+    setAnswers(nextAnswers);
+    setLookOption(null);
+    setHoldProgress(0);
+    selectionStartAtRef.current = null;
+    selectionOptionRef.current = null;
+
+    if (activeIdx < FACE_QUESTIONS.length - 1) {
+      window.setTimeout(() => {
+        currentIdxRef.current = activeIdx + 1;
+        setCurrentIdx(activeIdx + 1);
+        selectionLockedRef.current = false;
+      }, 320);
+    } else {
+      recordAndGenerate(nextAnswers);
+    }
+  }, [recordAndGenerate, setMirrorSpeaking]);
+
+  useEffect(() => {
+    commitAnswerRef.current = handleAnswer;
+  }, [handleAnswer]);
+
+  const handlePrevious = useCallback(() => {
+    if (currentIdxRef.current <= 0) return;
+    stopSpeaking();
+    setMirrorSpeaking(false);
+    const previous = currentIdxRef.current - 1;
+    currentIdxRef.current = previous;
+    selectionLockedRef.current = false;
+    setLookOption(null);
+    setHoldProgress(0);
+    setCurrentIdx(previous);
+  }, [setMirrorSpeaking]);
+
+  const handleCancel = useCallback(() => {
+    stopSpeaking();
+    setMirrorSpeaking(false);
+    useAppStore.getState().setActiveDimensionKey(null);
+    setStage('STANDBY');
+  }, [setMirrorSpeaking, setStage]);
+
+  const interactionStatus = useMemo(() => {
+    if (lookOption === 0) return '看向左侧确认中';
+    if (lookOption === 1) return '看向右侧确认中';
+    return '正视屏幕后，看向左侧或右侧作答';
+  }, [lookOption]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -230,9 +469,45 @@ export function FaceTrackingDemo() {
 
         const { camera } = mindarThree;
         const clock = new THREE.Clock();
+        const faceEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+        const faceQuaternion = new THREE.Quaternion();
         renderer.setAnimationLoop(() => {
           const shader = faceMaterial.userData.shader as { uniforms?: Record<string, { value: unknown }> } | undefined;
-          if (shader?.uniforms?.uTime) shader.uniforms.uTime.value = clock.getElapsedTime();
+          const elapsed = clock.getElapsedTime();
+          if (shader?.uniforms?.uTime) shader.uniforms.uTime.value = elapsed;
+
+          faceMesh.getWorldQuaternion(faceQuaternion);
+          faceEuler.setFromQuaternion(faceQuaternion, 'YXZ');
+          const yaw = -faceEuler.y;
+          const now = performance.now();
+          const nextOption = yaw < -FACE_SELECT_YAW_THRESHOLD ? 0 : yaw > FACE_SELECT_YAW_THRESHOLD ? 1 : null;
+
+          if (faceYawSampleFrameRef.current % 4 === 0) {
+            setFaceYaw(yaw);
+          }
+          faceYawSampleFrameRef.current += 1;
+
+          if (selectionLockedRef.current) {
+            setLookOption(null);
+            setHoldProgress(0);
+          } else if (nextOption === null) {
+            selectionStartAtRef.current = null;
+            selectionOptionRef.current = null;
+            setLookOption(null);
+            setHoldProgress(0);
+          } else {
+            if (selectionOptionRef.current !== nextOption) {
+              selectionOptionRef.current = nextOption;
+              selectionStartAtRef.current = now;
+            }
+            const startedAt = selectionStartAtRef.current ?? now;
+            const progress = Math.min(1, (now - startedAt) / FACE_SELECT_HOLD_MS);
+            setLookOption(nextOption);
+            setHoldProgress(progress);
+            if (progress >= 1) {
+              commitAnswerRef.current(nextOption);
+            }
+          }
 
           renderer.render(scene, camera);
         });
@@ -282,17 +557,61 @@ export function FaceTrackingDemo() {
         <button
           type="button"
           className="face-demo__back"
-          onClick={() => setStage('STANDBY')}
+          onClick={handleCancel}
         >
           ← 返回
         </button>
-        <div className="face-demo__title">🎭 面部追踪演示 · Unity 面具贴图</div>
+        <div className="face-demo__title">🎭 面部追踪答题 · 看向左右选择</div>
         {status === 'running' && activeLabel ? (
-          <div className="face-demo__mask-name">{activeLabel}</div>
+          <div className="face-demo__mask-name">{activeLabel} · yaw {faceYaw.toFixed(2)}</div>
         ) : (
           <div className="face-demo__mask-name" />
         )}
       </div>
+
+      {status === 'running' ? (
+        <>
+          <div className="face-demo-question-options">
+            {question.options.map((option, index) => {
+              const isActive = lookOption === index;
+              return (
+                <button
+                  key={`${question.id}-${option.value}`}
+                  type="button"
+                  className={`face-demo-option face-demo-option--${index === 0 ? 'left' : 'right'}${isActive ? ' face-demo-option--active' : ''}`}
+                  style={isActive ? { '--face-select-progress': `${holdProgress * 360}deg` } as CSSProperties : undefined}
+                  onClick={() => handleAnswer(option.value)}
+                >
+                  <span className="face-demo-option__index">{index === 0 ? '← 看向左侧选择' : '看向右侧选择 →'}</span>
+                  <span className="face-demo-option__label">{option.label}</span>
+                  {isActive ? <span className="face-demo-option__hold">保持确认</span> : null}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="face-demo-question-panel">
+            <div className="face-demo-question-panel__head">
+              <div>
+                <div className="face-demo-question-panel__step">第 {currentIdx + 1} 题 / 共 {FACE_QUESTIONS.length} 题</div>
+                <div className="face-demo-question-panel__status">{interactionStatus}</div>
+              </div>
+              <button
+                type="button"
+                className="face-demo-question-panel__audio"
+                onClick={() => readQuestion()}
+              >
+                重读题目
+              </button>
+            </div>
+            <h2 className="face-demo-question-panel__text">{question.text}</h2>
+            <div className="face-demo-question-panel__controls">
+              <button type="button" onClick={handlePrevious} disabled={currentIdx === 0}>上一题</button>
+              <button type="button" onClick={handleCancel}>返回</button>
+            </div>
+          </div>
+        </>
+      ) : null}
 
       {/* 加载/错误覆盖层 */}
       {status === 'loading' ? (
@@ -313,7 +632,7 @@ export function FaceTrackingDemo() {
           <button
             type="button"
             className="face-demo__back face-demo__back--inline"
-            onClick={() => setStage('STANDBY')}
+            onClick={handleCancel}
           >
             返回首页
           </button>

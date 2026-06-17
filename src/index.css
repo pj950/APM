@@ -290,7 +290,7 @@ body {
   align-items: flex-end !important;
   justify-content: center;
   padding-bottom: 2.5rem;
-  background: linear-gradient(to top, rgba(5, 7, 12, 0.74) 0%, rgba(5, 7, 12, 0.22) 48%, transparent 100%);
+  background: linear-gradient(to top, rgba(5, 7, 12, 0.7) 0%, rgba(5, 7, 12, 0.3) 55%, transparent 100%);
   position: relative;
   overflow: hidden;
 }
@@ -1802,13 +1802,54 @@ body {
 
 .ar-face-mask-overlay {
   position: fixed;
-  inset: 0;
-  width: 100vw;
-  height: 100vh;
   z-index: 7;
   pointer-events: none;
-  mix-blend-mode: screen;
-  opacity: 0.92;
+  transform-style: preserve-3d;
+  filter:
+    drop-shadow(0 0 22px rgba(0, 204, 255, 0.2)) drop-shadow(0 0 60px rgba(125, 211, 252, 0.12));
+  transition:
+    left 120ms linear,
+    top 120ms linear,
+    width 120ms linear,
+    height 120ms linear,
+    transform 120ms linear,
+    opacity 180ms ease,
+    filter 180ms ease;
+}
+
+.ar-face-mask-overlay--active {
+  opacity: 1;
+}
+
+.ar-face-mask-overlay__shell,
+.ar-face-mask-overlay__shell>div,
+.ar-face-mask-overlay__shell canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.ar-face-mask-overlay__fallback {
+  width: 100%;
+  height: 100%;
+  transform: scale(1.08);
+}
+
+.ar-face-mask-overlay__fallback .mirror-face-fallback {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+}
+
+.ar-face-mask-overlay__lock {
+  position: absolute;
+  inset: -16%;
+  border-radius: 50%;
+  border: 1px solid rgba(148, 224, 255, 0.22);
+  box-shadow:
+    0 0 0 1px rgba(125, 211, 252, 0.06),
+    0 0 26px rgba(0, 204, 255, 0.14),
+    inset 0 0 18px rgba(255, 255, 255, 0.06);
+  animation: ar-face-mask-lock 1.8s ease-in-out infinite alternate;
 }
 
 .question-effects-overlay {
@@ -1952,6 +1993,18 @@ body {
 
 .stage-questioning--impact .question-camera-guides {
   filter: saturate(1.15) brightness(1.05);
+}
+
+@keyframes ar-face-mask-lock {
+  0% {
+    opacity: 0.26;
+    transform: scale(0.96);
+  }
+
+  100% {
+    opacity: 0.62;
+    transform: scale(1.03);
+  }
 }
 
 .question-content--impact {
@@ -5901,12 +5954,169 @@ body {
 
 .face-demo__mask-name {
   margin-left: auto;
-  min-width: 120px;
+  min-width: 160px;
   text-align: right;
   font-family: var(--font-mono);
   font-size: 0.85rem;
   color: rgba(125, 232, 255, 0.85);
   text-shadow: 0 0 12px rgba(125, 232, 255, 0.4);
+}
+
+.face-demo-question-options {
+  position: absolute;
+  top: 5.6rem;
+  left: 4rem;
+  right: 4rem;
+  z-index: 3;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  pointer-events: none;
+}
+
+.face-demo-option {
+  --face-select-progress: 0deg;
+  pointer-events: auto;
+  position: relative;
+  overflow: hidden;
+  width: min(23rem, 34vw);
+  min-height: 5.6rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.9rem 1.15rem;
+  color: #f0fbff;
+  text-align: left;
+  border: 1px solid rgba(125, 232, 255, 0.24);
+  border-radius: 8px;
+  background:
+    linear-gradient(rgba(6, 13, 22, 0.84), rgba(6, 13, 22, 0.84)) padding-box,
+    conic-gradient(rgba(125, 232, 255, 0.8) var(--face-select-progress), rgba(125, 232, 255, 0.08) var(--face-select-progress)) border-box;
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.46), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(12px);
+}
+
+.face-demo-option--active {
+  border-color: rgba(125, 232, 255, 0.86);
+  background:
+    linear-gradient(rgba(0, 31, 42, 0.88), rgba(6, 13, 22, 0.82)) padding-box,
+    conic-gradient(rgba(125, 232, 255, 0.92) var(--face-select-progress), rgba(125, 232, 255, 0.1) var(--face-select-progress)) border-box;
+  box-shadow: 0 0 28px rgba(0, 204, 255, 0.24), 0 12px 42px rgba(0, 0, 0, 0.52);
+}
+
+.face-demo-option__index,
+.face-demo-option__hold {
+  position: relative;
+  z-index: 1;
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  letter-spacing: 0.16em;
+  color: #7de8ff;
+}
+
+.face-demo-option__label {
+  position: relative;
+  z-index: 1;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #f5fdff;
+  line-height: 1.28;
+}
+
+.face-demo-option__hold {
+  color: rgba(226, 252, 255, 0.72);
+}
+
+.face-demo-question-panel {
+  position: absolute;
+  left: 50%;
+  bottom: 2.25rem;
+  z-index: 3;
+  width: min(48rem, calc(100vw - 3rem));
+  transform: translateX(-50%);
+  padding: 1rem 1.15rem 1.05rem;
+  color: #f0fbff;
+  border: 1px solid rgba(125, 232, 255, 0.22);
+  border-radius: 8px;
+  background: rgba(5, 10, 16, 0.78);
+  box-shadow: 0 18px 52px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(14px);
+}
+
+.face-demo-question-panel__head,
+.face-demo-question-panel__controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.face-demo-question-panel__step,
+.face-demo-question-panel__status {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+}
+
+.face-demo-question-panel__step {
+  color: #7de8ff;
+}
+
+.face-demo-question-panel__status {
+  margin-top: 0.25rem;
+  color: rgba(214, 244, 255, 0.72);
+}
+
+.face-demo-question-panel__text {
+  margin: 0.72rem 0 0.9rem;
+  font-size: clamp(1.08rem, 1.7vw, 1.45rem);
+  line-height: 1.36;
+  letter-spacing: 0;
+}
+
+.face-demo-question-panel__audio,
+.face-demo-question-panel__controls button {
+  color: #7de8ff;
+  border: 1px solid rgba(125, 232, 255, 0.28);
+  border-radius: 999px;
+  background: rgba(125, 232, 255, 0.08);
+  padding: 0.45rem 0.8rem;
+  cursor: pointer;
+}
+
+.face-demo-question-panel__controls button:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+@media (max-width: 820px) {
+  .face-demo-question-options {
+    top: 5.2rem;
+    left: 1rem;
+    right: 1rem;
+  }
+
+  .face-demo-option {
+    width: calc(50vw - 1.5rem);
+    min-height: 6.2rem;
+    padding: 0.72rem 0.78rem;
+  }
+
+  .face-demo-option__label {
+    font-size: 0.9rem;
+  }
+
+  .face-demo-question-panel {
+    bottom: 1rem;
+    width: calc(100vw - 1.5rem);
+  }
+
+  .face-demo-question-panel__head,
+  .face-demo-question-panel__controls {
+    align-items: flex-start;
+  }
 }
 
 .face-demo__overlay {
