@@ -1802,98 +1802,13 @@ body {
 
 .ar-face-mask-overlay {
   position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
   z-index: 7;
   pointer-events: none;
-  transform-style: preserve-3d;
-  filter:
-    drop-shadow(0 0 22px rgba(0, 204, 255, 0.2)) drop-shadow(0 0 60px rgba(125, 211, 252, 0.12));
-  transition:
-    left 120ms linear,
-    top 120ms linear,
-    width 120ms linear,
-    height 120ms linear,
-    transform 120ms linear,
-    opacity 180ms ease,
-    filter 180ms ease;
-}
-
-.ar-face-mask-overlay--active {
-  opacity: 1;
-}
-
-.ar-face-mask-overlay__shell,
-.ar-face-mask-overlay__shell>div {
-  width: 100% !important;
-  height: 100% !important;
-}
-
-.ar-face-mask-overlay__shell {
-  position: relative;
-  overflow: hidden;
-  border-radius: 46% 46% 50% 50%;
-  transform: perspective(900px) rotateX(3deg);
   mix-blend-mode: screen;
-}
-
-.ar-face-mask-overlay__texture,
-.ar-face-mask-overlay__shine {
-  position: absolute;
-  inset: 0;
-  width: 100% !important;
-  height: 100% !important;
-  pointer-events: none;
-}
-
-.ar-face-mask-overlay__texture {
-  object-fit: fill;
-  opacity: 0.74;
-  filter: saturate(1.12) contrast(1.12) brightness(1.08);
-}
-
-.ar-face-mask-overlay__texture--flow {
-  inset: -12%;
-  width: 124% !important;
-  height: 124% !important;
-  opacity: 0.32;
-  transform-origin: 50% 50%;
-  animation: ar-face-texture-flow 5.8s linear infinite;
-  mix-blend-mode: screen;
-}
-
-.ar-face-mask-overlay__shine {
-  background:
-    radial-gradient(circle at 42% 28%, rgba(255, 255, 255, 0.24), transparent 18%),
-    linear-gradient(115deg, transparent 10%, rgba(255, 255, 255, 0.18) 46%, transparent 58%);
-  opacity: 0.32;
-  mix-blend-mode: screen;
-}
-
-.ar-face-mask-overlay__fallback {
-  width: 100%;
-  height: 100%;
-  transform: scale(1.08);
-}
-
-.ar-face-mask-overlay__fallback .mirror-face-fallback {
-  width: 100%;
-  height: 100%;
-  background: transparent;
-}
-
-.ar-face-mask-overlay__lock {
-  position: absolute;
-  inset: -16%;
-  border-radius: 50%;
-  border: 1px solid rgba(148, 224, 255, 0.22);
-  box-shadow:
-    0 0 0 1px rgba(125, 211, 252, 0.06),
-    0 0 26px rgba(0, 204, 255, 0.14),
-    inset 0 0 18px rgba(255, 255, 255, 0.06);
-  animation: ar-face-mask-lock 1.8s ease-in-out infinite alternate;
-}
-
-.ar-face-mask-overlay--speaking .ar-face-mask-overlay__shell {
-  filter: brightness(1.08) saturate(1.18);
+  opacity: 0.92;
 }
 
 .question-effects-overlay {
@@ -2037,28 +1952,6 @@ body {
 
 .stage-questioning--impact .question-camera-guides {
   filter: saturate(1.15) brightness(1.05);
-}
-
-@keyframes ar-face-mask-lock {
-  0% {
-    opacity: 0.26;
-    transform: scale(0.96);
-  }
-
-  100% {
-    opacity: 0.62;
-    transform: scale(1.03);
-  }
-}
-
-@keyframes ar-face-texture-flow {
-  0% {
-    transform: rotate(0deg) scale(1);
-  }
-
-  100% {
-    transform: rotate(360deg) scale(1);
-  }
 }
 
 .question-content--impact {

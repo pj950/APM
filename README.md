@@ -60,7 +60,7 @@ npm run build      # 生产构建
 
 开发服务器固定使用 `localhost:5173`，并启用 Vite `strictPort`；如果 5173 已被占用，服务会直接报错，不会自动跳到 5174/5175/5176。
 
-QUESTIONING 答题页不再渲染流体/portal 背景特效，改用共享 CV 摄像头产出的 face landmarks 驱动 Unity face 贴图覆盖层；举手作答仍沿用原 pose 检测链路，不接入 MindAR，也不额外占用摄像头。因为共享视频层使用 `object-fit: cover` 且水平镜像，face overlay 的 landmarks 必须先映射到裁切后的屏幕坐标再渲染，不能直接把 0-1 landmark 坐标当视口百分比使用。
+QUESTIONING 答题页不再渲染流体/portal 背景特效，改用共享 CV 摄像头产出的 face landmarks 驱动 Unity face mesh 覆盖层；举手作答仍沿用原 pose 检测链路，不接入 MindAR，也不额外占用摄像头。因为共享视频层使用 `object-fit: cover` 且水平镜像，face overlay 的 landmarks 必须先映射到裁切后的屏幕坐标再渲染，不能直接把 0-1 landmark 坐标当视口百分比使用。答题页 overlay 使用 `FaceLandmarker.FACE_LANDMARKS_TESSELATION` 推导脸部三角网格，并在 canvas 中按三角面采样 `/unity-face/textures/cartoon.png`，避免整张图片贴纸式覆盖。
 
 `public/model/` 与 `public/images/` 体积较大，作为本地资源目录保留，不随 Git 推送；需要这些模型或人格图片时，从本机备份复制到对应目录即可。
 
