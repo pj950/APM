@@ -11,6 +11,7 @@ import { TarotStage } from './stages/TarotStage';
 import { WaterSimulator } from './demos/WaterSimulator';
 import { GumGumHandStretch } from './demos/GumGumHandStretch';
 import { FaceTrackingDemo } from './demos/FaceTrackingDemo';
+import { ARFaceMaskOverlay } from './questioning/ARFaceMaskOverlay';
 
 export function StageRouter() {
   const currentStage = useAppStore((s) => s.currentStage);
@@ -71,6 +72,7 @@ export function StageRouter() {
 
       {/* 人形粒子扫描层 */}
       <BodyScanCanvas />
+      <ARFaceMaskOverlay />
 
       {/* 阶段路由 */}
       {currentStage === 'STANDBY' && <StandbyStage />}

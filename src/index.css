@@ -290,7 +290,7 @@ body {
   align-items: flex-end !important;
   justify-content: center;
   padding-bottom: 2.5rem;
-  background: linear-gradient(to top, rgba(5, 7, 12, 0.7) 0%, rgba(5, 7, 12, 0.3) 55%, transparent 100%);
+  background: linear-gradient(to top, rgba(5, 7, 12, 0.74) 0%, rgba(5, 7, 12, 0.22) 48%, transparent 100%);
   position: relative;
   overflow: hidden;
 }
@@ -1822,10 +1822,50 @@ body {
 }
 
 .ar-face-mask-overlay__shell,
-.ar-face-mask-overlay__shell>div,
-.ar-face-mask-overlay__shell canvas {
+.ar-face-mask-overlay__shell>div {
   width: 100% !important;
   height: 100% !important;
+}
+
+.ar-face-mask-overlay__shell {
+  position: relative;
+  overflow: hidden;
+  border-radius: 46% 46% 50% 50%;
+  transform: perspective(900px) rotateX(3deg);
+  mix-blend-mode: screen;
+}
+
+.ar-face-mask-overlay__texture,
+.ar-face-mask-overlay__shine {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  pointer-events: none;
+}
+
+.ar-face-mask-overlay__texture {
+  object-fit: fill;
+  opacity: 0.74;
+  filter: saturate(1.12) contrast(1.12) brightness(1.08);
+}
+
+.ar-face-mask-overlay__texture--flow {
+  inset: -12%;
+  width: 124% !important;
+  height: 124% !important;
+  opacity: 0.32;
+  transform-origin: 50% 50%;
+  animation: ar-face-texture-flow 5.8s linear infinite;
+  mix-blend-mode: screen;
+}
+
+.ar-face-mask-overlay__shine {
+  background:
+    radial-gradient(circle at 42% 28%, rgba(255, 255, 255, 0.24), transparent 18%),
+    linear-gradient(115deg, transparent 10%, rgba(255, 255, 255, 0.18) 46%, transparent 58%);
+  opacity: 0.32;
+  mix-blend-mode: screen;
 }
 
 .ar-face-mask-overlay__fallback {
@@ -1850,6 +1890,10 @@ body {
     0 0 26px rgba(0, 204, 255, 0.14),
     inset 0 0 18px rgba(255, 255, 255, 0.06);
   animation: ar-face-mask-lock 1.8s ease-in-out infinite alternate;
+}
+
+.ar-face-mask-overlay--speaking .ar-face-mask-overlay__shell {
+  filter: brightness(1.08) saturate(1.18);
 }
 
 .question-effects-overlay {
@@ -2004,6 +2048,16 @@ body {
   100% {
     opacity: 0.62;
     transform: scale(1.03);
+  }
+}
+
+@keyframes ar-face-texture-flow {
+  0% {
+    transform: rotate(0deg) scale(1);
+  }
+
+  100% {
+    transform: rotate(360deg) scale(1);
   }
 }
 

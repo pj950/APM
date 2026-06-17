@@ -1,17 +1,5 @@
 import { useEffect, useMemo, useRef, type CSSProperties } from 'react';
-import { Canvas, useThree } from '@react-three/fiber';
 import { useAppStore } from '../../store/useAppStore';
-import type { VisualArchetype, VoicePresetKey } from '../../types';
-import { MirrorFaceFallback, ScenePreset, resolveMaskKey } from '../dialogue/MirrorFace';
-import { createBestEffortWebGLRenderer, WebGLCanvasGuard } from '../WebGLCanvasGuard';
-
-const VOICE_MASK_MAP: Record<VoicePresetKey, VisualArchetype['baseType']> = {
-  gollum: 'Flora',
-  robot: 'Plasma',
-  ethereal: 'Nebula',
-  deep: 'Singularity',
-  crystal: 'Crystal',
-};
 
 type Point2D = {
   x: number;
@@ -24,15 +12,14 @@ type FaceMaskTransform = {
   width: number;
   height: number;
   rollDeg: number;
-  yaw: number;
-  pitch: number;
   confidence: number;
 };
 
 const MIN_FACE_WIDTH = 0.045;
 const MIN_FACE_HEIGHT = 0.085;
 const MASK_TRANSFORM_HOLD_MS = 600;
-const MASK_SCALE_BOOST = 1.25;
+const MASK_SCALE_BOOST = 1.38;
+const QUESTION_FACE_TEXTURE = `${import.meta.env.BASE_URL}unity-face/textures/cartoon.png`;
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -73,7 +60,6 @@ function computeFaceMaskTransform(landmarks: number[][] | null): FaceMaskTransfo
 
   const eyeCenter = averagePoint(leftEye, rightEye);
   const mouthCenter = averagePoint(mouthLeft, mouthRight);
-  const cheekCenter = averagePoint(leftCheek, rightCheek);
   const faceCenter = averagePoint(eyeCenter, mouthCenter);
 
   const cheekWidth = distance(leftCheek, rightCheek);
@@ -88,21 +74,12 @@ function computeFaceMaskTransform(landmarks: number[][] | null): FaceMaskTransfo
   const height = clamp(normalizedFaceHeight * 100 * 2.0 * MASK_SCALE_BOOST, 25, 98);
   const rollDeg = Math.atan2(rightEye.y - leftEye.y, rightEye.x - leftEye.x) * (180 / Math.PI);
 
-  const faceHalfWidth = Math.max(Math.abs(rightCheek.x - leftCheek.x) * 0.5, 0.001);
-  const yaw = clamp((cheekCenter.x - nose.x) / faceHalfWidth, -1, 1) * 0.82;
-
-  const eyeToMouth = Math.max(mouthCenter.y - eyeCenter.y, 0.001);
-  const pitchRatio = (nose.y - eyeCenter.y) / eyeToMouth;
-  const pitch = clamp((pitchRatio - 0.54) * 2.35, -0.58, 0.58);
-
   return {
     x,
     y,
     width,
     height,
     rollDeg,
-    yaw,
-    pitch,
     confidence: clamp(
       Math.min(
         (normalizedFaceWidth - MIN_FACE_WIDTH) / 0.11,
@@ -114,36 +91,9 @@ function computeFaceMaskTransform(landmarks: number[][] | null): FaceMaskTransfo
   };
 }
 
-function TrackedMaskScene({
-  maskKey,
-  isSpeaking,
-  pitch,
-  yaw,
-}: {
-  maskKey: ReturnType<typeof resolveMaskKey>;
-  isSpeaking: boolean;
-  pitch: number;
-  yaw: number;
-}) {
-  const { viewport } = useThree();
-  const fillFactor = 0.95; // 占容器宽度的95%，最大化脸部覆盖范围
-  const scaleFactor = (viewport.width / 1.5) * fillFactor;
-
-  return (
-    <>
-      <ambientLight intensity={0.54} />
-      <pointLight position={[5, 5, 5]} intensity={1.46} />
-      <group position={[0, -0.05, 0]} rotation={[pitch, yaw, 0]} scale={[scaleFactor, scaleFactor * 1.05, scaleFactor]}>
-        <ScenePreset maskKey={maskKey} isSpeaking={isSpeaking} motionMode="tracked" hideHood />
-      </group>
-    </>
-  );
-}
-
 export function ARFaceMaskOverlay() {
   const currentStage = useAppStore((s) => s.currentStage);
   const faceLandmarks = useAppStore((s) => s.faceLandmarks);
-  const voicePreset = useAppStore((s) => s.voicePreset);
   const isMirrorSpeaking = useAppStore((s) => s.isMirrorSpeaking);
   const lastStableTransformRef = useRef<FaceMaskTransform | null>(null);
   const lastStableTransformAtRef = useRef(0);
@@ -177,8 +127,6 @@ export function ARFaceMaskOverlay() {
     return null;
   }
 
-  const baseType = VOICE_MASK_MAP[voicePreset] || 'Crystal';
-  const maskKey = resolveMaskKey(baseType);
   const style = {
     left: `${transform.x}%`,
     top: `${transform.y}%`,
@@ -189,24 +137,11 @@ export function ARFaceMaskOverlay() {
   } as CSSProperties;
 
   return (
-    <div className="ar-face-mask-overlay ar-face-mask-overlay--active" style={style} aria-hidden="true">
+    <div className={`ar-face-mask-overlay ar-face-mask-overlay--active${isMirrorSpeaking ? ' ar-face-mask-overlay--speaking' : ''}`} style={style} aria-hidden="true">
       <div className="ar-face-mask-overlay__shell">
-        <WebGLCanvasGuard
-          fallback={(
-            <div className="ar-face-mask-overlay__fallback">
-              <MirrorFaceFallback baseType={baseType} isSpeaking={isMirrorSpeaking} />
-            </div>
-          )}
-        >
-          <Canvas
-            camera={{ position: [0, 0, 2.45], fov: 46 }}
-            gl={(canvas) => createBestEffortWebGLRenderer(canvas as HTMLCanvasElement)}
-            dpr={[1, 1.25]}
-            style={{ width: '100%', height: '100%', background: 'transparent' }}
-          >
-            <TrackedMaskScene maskKey={maskKey} isSpeaking={isMirrorSpeaking} pitch={transform.pitch} yaw={transform.yaw} />
-          </Canvas>
-        </WebGLCanvasGuard>
+        <img className="ar-face-mask-overlay__texture" src={QUESTION_FACE_TEXTURE} alt="" draggable={false} />
+        <img className="ar-face-mask-overlay__texture ar-face-mask-overlay__texture--flow" src={QUESTION_FACE_TEXTURE} alt="" draggable={false} />
+        <span className="ar-face-mask-overlay__shine" />
       </div>
       <span className="ar-face-mask-overlay__lock" />
     </div>

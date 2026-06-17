@@ -60,6 +60,8 @@ npm run build      # 生产构建
 
 开发服务器固定使用 `localhost:5173`，并启用 Vite `strictPort`；如果 5173 已被占用，服务会直接报错，不会自动跳到 5174/5175/5176。
 
+QUESTIONING 答题页不再渲染流体/portal 背景特效，改用共享 CV 摄像头产出的 face landmarks 驱动 Unity face 贴图覆盖层；举手作答仍沿用原 pose 检测链路，不接入 MindAR，也不额外占用摄像头。
+
 `public/model/` 与 `public/images/` 体积较大，作为本地资源目录保留，不随 Git 推送；需要这些模型或人格图片时，从本机备份复制到对应目录即可。
 
 ## 演示页面（待机流体模式入口）
