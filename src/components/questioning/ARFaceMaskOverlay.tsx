@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 
 type Point2D = {
@@ -15,10 +15,19 @@ type FaceMaskTransform = {
   confidence: number;
 };
 
+type VideoDisplayMetrics = {
+  widthScale: number;
+  heightScale: number;
+  offsetX: number;
+  offsetY: number;
+};
+
 const MIN_FACE_WIDTH = 0.045;
 const MIN_FACE_HEIGHT = 0.085;
 const MASK_TRANSFORM_HOLD_MS = 600;
-const MASK_SCALE_BOOST = 1.38;
+const MASK_WIDTH_SCALE = 1.56;
+const MASK_HEIGHT_SCALE = 1.18;
+const CAMERA_SOURCE_ASPECT = 4 / 3;
 const QUESTION_FACE_TEXTURE = `${import.meta.env.BASE_URL}unity-face/textures/cartoon.png`;
 
 function clamp(value: number, min: number, max: number) {
@@ -43,7 +52,39 @@ function distance(a: Point2D, b: Point2D) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-function computeFaceMaskTransform(landmarks: number[][] | null): FaceMaskTransform | null {
+function getVideoDisplayMetrics(viewportWidth: number, viewportHeight: number): VideoDisplayMetrics {
+  const viewportAspect = viewportWidth / Math.max(viewportHeight, 1);
+
+  if (viewportAspect > CAMERA_SOURCE_ASPECT) {
+    const heightScale = viewportAspect / CAMERA_SOURCE_ASPECT;
+    return {
+      widthScale: 1,
+      heightScale,
+      offsetX: 0,
+      offsetY: (1 - heightScale) * 0.5,
+    };
+  }
+
+  const widthScale = CAMERA_SOURCE_ASPECT / Math.max(viewportAspect, 0.001);
+  return {
+    widthScale,
+    heightScale: 1,
+    offsetX: (1 - widthScale) * 0.5,
+    offsetY: 0,
+  };
+}
+
+function mapVideoPointToViewport(point: Point2D, metrics: VideoDisplayMetrics): Point2D {
+  const coveredX = point.x * metrics.widthScale + metrics.offsetX;
+  const coveredY = point.y * metrics.heightScale + metrics.offsetY;
+
+  return {
+    x: 1 - coveredX,
+    y: coveredY,
+  };
+}
+
+function computeFaceMaskTransform(landmarks: number[][] | null, metrics: VideoDisplayMetrics): FaceMaskTransform | null {
   const nose = getPoint(landmarks, 1);
   const forehead = getPoint(landmarks, 10);
   const chin = getPoint(landmarks, 152);
@@ -59,8 +100,13 @@ function computeFaceMaskTransform(landmarks: number[][] | null): FaceMaskTransfo
   }
 
   const eyeCenter = averagePoint(leftEye, rightEye);
-  const mouthCenter = averagePoint(mouthLeft, mouthRight);
-  const faceCenter = averagePoint(eyeCenter, mouthCenter);
+  const cheekCenter = averagePoint(leftCheek, rightCheek);
+  const verticalCenter = averagePoint(forehead, chin);
+  const faceCenter = {
+    x: (cheekCenter.x * 0.64) + (nose.x * 0.36),
+    y: (verticalCenter.y * 0.7) + (eyeCenter.y * 0.3),
+  };
+  const mappedCenter = mapVideoPointToViewport(faceCenter, metrics);
 
   const cheekWidth = distance(leftCheek, rightCheek);
   const faceHeight = distance(forehead, chin);
@@ -68,11 +114,11 @@ function computeFaceMaskTransform(landmarks: number[][] | null): FaceMaskTransfo
   const normalizedFaceWidth = Math.max(cheekWidth, MIN_FACE_WIDTH);
   const normalizedFaceHeight = Math.max(faceHeight, MIN_FACE_HEIGHT);
 
-  const x = clamp(faceCenter.x * 100, 5, 95);
-  const y = clamp(faceCenter.y * 100, 5, 95);
-  const width = clamp(normalizedFaceWidth * 100 * 2.2 * MASK_SCALE_BOOST, 20, 98);
-  const height = clamp(normalizedFaceHeight * 100 * 2.0 * MASK_SCALE_BOOST, 25, 98);
-  const rollDeg = Math.atan2(rightEye.y - leftEye.y, rightEye.x - leftEye.x) * (180 / Math.PI);
+  const x = clamp(mappedCenter.x * 100, 6, 94);
+  const y = clamp(mappedCenter.y * 100, 8, 92);
+  const width = clamp(normalizedFaceWidth * metrics.widthScale * 100 * MASK_WIDTH_SCALE, 14, 54);
+  const height = clamp(normalizedFaceHeight * metrics.heightScale * 100 * MASK_HEIGHT_SCALE, 18, 68);
+  const rollDeg = -Math.atan2(rightEye.y - leftEye.y, rightEye.x - leftEye.x) * (180 / Math.PI);
 
   return {
     x,
@@ -97,8 +143,25 @@ export function ARFaceMaskOverlay() {
   const isMirrorSpeaking = useAppStore((s) => s.isMirrorSpeaking);
   const lastStableTransformRef = useRef<FaceMaskTransform | null>(null);
   const lastStableTransformAtRef = useRef(0);
+  const [viewportSize, setViewportSize] = useState(() => ({
+    width: typeof window === 'undefined' ? 1280 : window.innerWidth,
+    height: typeof window === 'undefined' ? 720 : window.innerHeight,
+  }));
 
-  const rawTransform = useMemo(() => computeFaceMaskTransform(faceLandmarks), [faceLandmarks]);
+  useEffect(() => {
+    const handleResize = () => {
+      setViewportSize({ width: window.innerWidth, height: window.innerHeight });
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const displayMetrics = useMemo(() => {
+    return getVideoDisplayMetrics(viewportSize.width, viewportSize.height);
+  }, [viewportSize.height, viewportSize.width]);
+
+  const rawTransform = useMemo(() => computeFaceMaskTransform(faceLandmarks, displayMetrics), [displayMetrics, faceLandmarks]);
 
   useEffect(() => {
     if (!rawTransform) return;
