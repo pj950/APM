@@ -100,6 +100,7 @@ const FACE_QUESTIONS: FaceQuestion[] = [
 
 const FACE_SELECT_HOLD_MS = 1000;
 const FACE_SELECT_YAW_THRESHOLD = 0.2;
+const FACE_SELECT_CONFIRM_PAUSE_MS = 900;
 const VOICE_PRESET_KEYS = Object.keys(VOICE_PRESETS) as VoicePresetKey[];
 
 type MindARFaceGeometry = THREE.BufferGeometry & {
@@ -204,6 +205,7 @@ export function FaceTrackingDemo() {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [answers, setAnswers] = useState<(0 | 1)[]>(Array(FACE_QUESTIONS.length).fill(-1));
   const [lookOption, setLookOption] = useState<0 | 1 | null>(null);
+  const [confirmedOption, setConfirmedOption] = useState<0 | 1 | null>(null);
   const [holdProgress, setHoldProgress] = useState(0);
   const [faceYaw, setFaceYaw] = useState(0);
 
@@ -302,6 +304,7 @@ export function FaceTrackingDemo() {
   const handleAnswer = useCallback((value: 0 | 1) => {
     if (selectionLockedRef.current) return;
     selectionLockedRef.current = true;
+    setConfirmedOption(value);
     stopSpeaking();
     setMirrorSpeaking(false);
 
@@ -319,8 +322,9 @@ export function FaceTrackingDemo() {
       window.setTimeout(() => {
         currentIdxRef.current = activeIdx + 1;
         setCurrentIdx(activeIdx + 1);
+        setConfirmedOption(null);
         selectionLockedRef.current = false;
-      }, 320);
+      }, FACE_SELECT_CONFIRM_PAUSE_MS);
     } else {
       recordAndGenerate(nextAnswers);
     }
@@ -337,6 +341,7 @@ export function FaceTrackingDemo() {
     const previous = currentIdxRef.current - 1;
     currentIdxRef.current = previous;
     selectionLockedRef.current = false;
+    setConfirmedOption(null);
     setLookOption(null);
     setHoldProgress(0);
     setCurrentIdx(previous);
@@ -350,10 +355,12 @@ export function FaceTrackingDemo() {
   }, [setMirrorSpeaking, setStage]);
 
   const interactionStatus = useMemo(() => {
+    if (confirmedOption === 0) return `已选择左侧：${question.options[0].label}`;
+    if (confirmedOption === 1) return `已选择右侧：${question.options[1].label}`;
     if (lookOption === 0) return '看向左侧确认中';
     if (lookOption === 1) return '看向右侧确认中';
     return '正视屏幕后，看向左侧或右侧作答';
-  }, [lookOption]);
+  }, [confirmedOption, lookOption, question.options]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -574,21 +581,32 @@ export function FaceTrackingDemo() {
           <div className="face-demo-question-options">
             {question.options.map((option, index) => {
               const isActive = lookOption === index;
+              const isConfirmed = confirmedOption === index;
               return (
                 <button
                   key={`${question.id}-${option.value}`}
                   type="button"
-                  className={`face-demo-option face-demo-option--${index === 0 ? 'left' : 'right'}${isActive ? ' face-demo-option--active' : ''}`}
+                  className={`face-demo-option face-demo-option--${index === 0 ? 'left' : 'right'}${isActive ? ' face-demo-option--active' : ''}${isConfirmed ? ' face-demo-option--confirmed' : ''}`}
                   style={isActive ? { '--face-select-progress': `${holdProgress * 360}deg` } as CSSProperties : undefined}
                   onClick={() => handleAnswer(option.value)}
                 >
                   <span className="face-demo-option__index">{index === 0 ? '← 看向左侧选择' : '看向右侧选择 →'}</span>
                   <span className="face-demo-option__label">{option.label}</span>
-                  {isActive ? <span className="face-demo-option__hold">保持确认</span> : null}
+                  {isConfirmed ? (
+                    <span className="face-demo-option__hold">已选择，正在进入下一题…</span>
+                  ) : isActive ? (
+                    <span className="face-demo-option__hold">保持确认</span>
+                  ) : null}
                 </button>
               );
             })}
           </div>
+
+          {confirmedOption !== null ? (
+            <div className="face-demo-feedback-banner" aria-live="polite">
+              已确认：{confirmedOption === 0 ? question.options[0].label : question.options[1].label}
+            </div>
+          ) : null}
 
           <div className="face-demo-question-panel">
             <div className="face-demo-question-panel__head">
