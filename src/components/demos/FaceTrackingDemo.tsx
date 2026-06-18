@@ -209,6 +209,7 @@ export function FaceTrackingDemo() {
   const [confirmFx, setConfirmFx] = useState<{ side: 0 | 1; key: number } | null>(null);
   const [holdProgress, setHoldProgress] = useState(0);
   const [faceYaw, setFaceYaw] = useState(0);
+  const [laserOrigin, setLaserOrigin] = useState<{ x: number; y: number }>({ x: 50, y: 28 });
 
   const currentIdxRef = useRef(0);
   const answersRef = useRef<(0 | 1)[]>(Array(FACE_QUESTIONS.length).fill(-1));
@@ -218,6 +219,7 @@ export function FaceTrackingDemo() {
   const selectionLockedRef = useRef(false);
   const faceYawSampleFrameRef = useRef(0);
   const confirmFxKeyRef = useRef(0);
+  const laserOriginRef = useRef<{ x: number; y: number }>({ x: 50, y: 28 });
 
   const question = FACE_QUESTIONS[currentIdx];
   const [presets] = useState<VoicePresetKey[]>(() => {
@@ -485,6 +487,9 @@ export function FaceTrackingDemo() {
         const clock = new THREE.Clock();
         const faceEuler = new THREE.Euler(0, 0, 0, 'YXZ');
         const faceQuaternion = new THREE.Quaternion();
+        const faceWorldPos = new THREE.Vector3();
+        const faceWorldScale = new THREE.Vector3();
+        const projected = new THREE.Vector3();
         renderer.setAnimationLoop(() => {
           const shader = faceMaterial.userData.shader as { uniforms?: Record<string, { value: unknown }> } | undefined;
           const elapsed = clock.getElapsedTime();
@@ -496,8 +501,24 @@ export function FaceTrackingDemo() {
           const now = performance.now();
           const nextOption = yaw > FACE_SELECT_YAW_THRESHOLD ? 0 : yaw < -FACE_SELECT_YAW_THRESHOLD ? 1 : null;
 
-          if (faceYawSampleFrameRef.current % 4 === 0) {
+          if (faceYawSampleFrameRef.current % 3 === 0) {
             setFaceYaw(yaw);
+
+            // 将激光起点绑定到实时人脸屏幕坐标，并轻微上移到双眼附近。
+            faceMesh.getWorldPosition(faceWorldPos);
+            faceMesh.getWorldScale(faceWorldScale);
+            faceWorldPos.y += faceWorldScale.y * 0.34;
+            faceWorldPos.z += faceWorldScale.z * 0.05;
+            projected.copy(faceWorldPos).project(camera);
+            if (Number.isFinite(projected.x) && Number.isFinite(projected.y)) {
+              const x = THREE.MathUtils.clamp(((projected.x + 1) * 0.5) * 100, 8, 92);
+              const y = THREE.MathUtils.clamp(((1 - projected.y) * 0.5) * 100, 10, 72);
+              const prev = laserOriginRef.current;
+              if (Math.abs(prev.x - x) > 0.35 || Math.abs(prev.y - y) > 0.35) {
+                laserOriginRef.current = { x, y };
+                setLaserOrigin({ x, y });
+              }
+            }
           }
           faceYawSampleFrameRef.current += 1;
 
@@ -588,7 +609,11 @@ export function FaceTrackingDemo() {
           {confirmedOption === null && lookOption !== null ? (
             <div
               className={`face-demo-laser face-demo-laser--${lookOption === 0 ? 'left' : 'right'} face-demo-laser--charge`}
-              style={{ '--face-laser-charge': `${Math.max(holdProgress, 0.18)}` } as CSSProperties}
+              style={{
+                '--face-laser-charge': `${holdProgress}`,
+                '--face-laser-origin-x': `${laserOrigin.x}%`,
+                '--face-laser-origin-y': `${laserOrigin.y}%`,
+              } as CSSProperties}
               aria-hidden="true"
             >
               <span className="face-demo-laser__beam" />
@@ -599,6 +624,10 @@ export function FaceTrackingDemo() {
             <div
               key={confirmFx.key}
               className={`face-demo-laser face-demo-laser--${confirmFx.side === 0 ? 'left' : 'right'} face-demo-laser--fire`}
+              style={{
+                '--face-laser-origin-x': `${laserOrigin.x}%`,
+                '--face-laser-origin-y': `${laserOrigin.y}%`,
+              } as CSSProperties}
               aria-hidden="true"
             >
               <span className="face-demo-laser__beam" />

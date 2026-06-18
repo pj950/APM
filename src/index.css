@@ -5977,11 +5977,11 @@ body {
 .face-demo-laser {
   --face-laser-charge: 0;
   position: absolute;
-  top: clamp(7rem, 18vh, 10.2rem);
-  left: 50%;
+  top: var(--face-laser-origin-y, 28%);
+  left: var(--face-laser-origin-x, 50%);
   z-index: 7;
-  width: min(44vw, 30rem);
-  height: 28px;
+  width: min(48vw, 34rem);
+  height: 36px;
   transform-origin: left center;
   pointer-events: none;
 }
@@ -6001,7 +6001,7 @@ body {
   left: 0;
   right: 0;
   top: 50%;
-  height: 11px;
+  height: 16px;
   border-radius: 999px;
   background: linear-gradient(90deg, rgba(255, 145, 145, 0), rgba(255, 117, 117, 0.92) 20%, rgba(255, 41, 41, 1) 50%, rgba(255, 41, 41, 0.18) 100%);
   box-shadow: 0 0 18px rgba(255, 67, 67, 0.95), 0 0 44px rgba(255, 36, 36, 0.8), 0 0 80px rgba(255, 36, 36, 0.45);
@@ -6014,25 +6014,25 @@ body {
 }
 
 .face-demo-laser--charge .face-demo-laser__beam {
-  opacity: calc(0.2 + var(--face-laser-charge) * 0.65);
-  transform: translateY(-50%) scaleX(calc(0.12 + var(--face-laser-charge) * 0.88));
-  filter: blur(calc(1px - min(var(--face-laser-charge), 1) * 0.8px));
+  opacity: calc(0.45 + var(--face-laser-charge) * 0.55);
+  transform: translateY(-50%) scaleX(calc(0.45 + var(--face-laser-charge) * 0.55));
+  filter: blur(calc(0.6px - min(var(--face-laser-charge), 1) * 0.5px));
 }
 
 .face-demo-laser--fire .face-demo-laser__beam {
-  animation: face-demo-laser-fire 260ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: face-demo-laser-fire 120ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .face-demo-laser__flash {
   position: absolute;
   top: 50%;
-  width: 22px;
-  height: 22px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   background: radial-gradient(circle, rgba(255, 241, 241, 0.98) 0%, rgba(255, 86, 86, 0.9) 55%, rgba(255, 41, 41, 0) 100%);
   box-shadow: 0 0 24px rgba(255, 86, 86, 0.96), 0 0 56px rgba(255, 51, 51, 0.72);
   transform: translateY(-50%);
-  animation: face-demo-laser-flash 180ms ease-out forwards;
+  animation: face-demo-laser-flash 120ms ease-out forwards;
 }
 
 .face-demo-laser--left .face-demo-laser__flash {
@@ -6158,12 +6158,12 @@ body {
 
 @keyframes face-demo-laser-fire {
   0% {
-    opacity: 0.72;
-    transform: translateY(-50%) scaleX(0.04);
-    filter: blur(2px);
+    opacity: 1;
+    transform: translateY(-50%) scaleX(0.62);
+    filter: blur(1px);
   }
 
-  46% {
+  35% {
     opacity: 1;
     transform: translateY(-50%) scaleX(1);
     filter: blur(0);
