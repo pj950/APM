@@ -5948,12 +5948,9 @@ body {
 .face-demo__title {
   font-size: 1rem;
   font-weight: 600;
-  color: #eaf6ff;
-  letter-spacing: 0.04em;
 }
 
 .face-demo__mask-name {
-  margin-left: auto;
   min-width: 160px;
   text-align: right;
   font-family: var(--font-mono);
@@ -5976,24 +5973,31 @@ body {
 
 .face-demo-laser {
   --face-laser-charge: 0;
+  --face-laser-length: 380px;
+  --face-laser-angle: 0deg;
   position: absolute;
-  top: var(--face-laser-origin-y, 28%);
-  left: var(--face-laser-origin-x, 50%);
+  top: var(--face-laser-origin-y, 180px);
+  left: var(--face-laser-origin-x, 480px);
   z-index: 7;
-  width: min(48vw, 34rem);
+  width: var(--face-laser-length);
   height: 36px;
+  transform: translate(0, -50%) rotate(var(--face-laser-angle));
   transform-origin: left center;
   pointer-events: none;
 }
 
-.face-demo-laser--left {
-  transform: translate(-100%, -50%) rotate(-10deg);
-  transform-origin: right center;
-}
-
-.face-demo-laser--right {
-  transform: translate(0%, -50%) rotate(10deg);
-  transform-origin: left center;
+.face-demo-laser::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 30px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: radial-gradient(ellipse at left center, rgba(255, 84, 84, 0.52), rgba(255, 84, 84, 0.04) 58%, rgba(255, 84, 84, 0) 100%);
+  opacity: 0.95;
+  filter: blur(2px);
 }
 
 .face-demo-laser__beam {
@@ -6001,21 +6005,35 @@ body {
   left: 0;
   right: 0;
   top: 50%;
-  height: 16px;
+  height: 18px;
   border-radius: 999px;
-  background: linear-gradient(90deg, rgba(255, 145, 145, 0), rgba(255, 117, 117, 0.92) 20%, rgba(255, 41, 41, 1) 50%, rgba(255, 41, 41, 0.18) 100%);
-  box-shadow: 0 0 18px rgba(255, 67, 67, 0.95), 0 0 44px rgba(255, 36, 36, 0.8), 0 0 80px rgba(255, 36, 36, 0.45);
+  background: linear-gradient(90deg, rgba(255, 166, 166, 0.08), rgba(255, 110, 110, 0.9) 14%, rgba(255, 38, 38, 1) 46%, rgba(255, 38, 38, 0.3) 74%, rgba(255, 38, 38, 0.08) 100%);
+  box-shadow: 0 0 20px rgba(255, 67, 67, 0.96), 0 0 52px rgba(255, 36, 36, 0.84), 0 0 96px rgba(255, 36, 36, 0.5);
   transform: translateY(-50%);
   transform-origin: left center;
 }
 
-.face-demo-laser--left .face-demo-laser__beam {
-  transform-origin: right center;
+.face-demo-laser__beam::before,
+.face-demo-laser__beam::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.face-demo-laser__beam::before {
+  background: linear-gradient(90deg, rgba(255, 238, 238, 0), rgba(255, 234, 234, 0.9) 34%, rgba(255, 255, 255, 0.92) 50%, rgba(255, 220, 220, 0.25) 100%);
+  mix-blend-mode: screen;
+}
+
+.face-demo-laser__beam::after {
+  background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.2) 0 6px, rgba(255, 255, 255, 0.02) 6px 11px);
+  opacity: 0.75;
 }
 
 .face-demo-laser--charge .face-demo-laser__beam {
-  opacity: calc(0.45 + var(--face-laser-charge) * 0.55);
-  transform: translateY(-50%) scaleX(calc(0.45 + var(--face-laser-charge) * 0.55));
+  opacity: calc(0.55 + var(--face-laser-charge) * 0.45);
+  transform: translateY(-50%) scaleX(calc(0.62 + var(--face-laser-charge) * 0.38));
   filter: blur(calc(0.6px - min(var(--face-laser-charge), 1) * 0.5px));
 }
 
@@ -6026,21 +6044,22 @@ body {
 .face-demo-laser__flash {
   position: absolute;
   top: 50%;
-  width: 30px;
-  height: 30px;
+  right: -2px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   background: radial-gradient(circle, rgba(255, 241, 241, 0.98) 0%, rgba(255, 86, 86, 0.9) 55%, rgba(255, 41, 41, 0) 100%);
   box-shadow: 0 0 24px rgba(255, 86, 86, 0.96), 0 0 56px rgba(255, 51, 51, 0.72);
   transform: translateY(-50%);
-  animation: face-demo-laser-flash 120ms ease-out forwards;
+  animation: face-demo-laser-flash 110ms ease-out forwards;
 }
 
 .face-demo-laser--left .face-demo-laser__flash {
-  right: 0;
+  right: -2px;
 }
 
 .face-demo-laser--right .face-demo-laser__flash {
-  left: 0;
+  right: -2px;
 }
 
 .face-demo-option {

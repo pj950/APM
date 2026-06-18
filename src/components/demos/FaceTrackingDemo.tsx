@@ -196,6 +196,7 @@ export function FaceTrackingDemo() {
   const triggerGeneration = useAppStore((s) => s.triggerGeneration);
   const setVoicePreset = useAppStore((s) => s.setVoicePreset);
   const setMirrorSpeaking = useAppStore((s) => s.setMirrorSpeaking);
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const [status, setStatus] = useState<'loading' | 'running' | 'error'>('loading');
@@ -209,7 +210,7 @@ export function FaceTrackingDemo() {
   const [confirmFx, setConfirmFx] = useState<{ side: 0 | 1; key: number } | null>(null);
   const [holdProgress, setHoldProgress] = useState(0);
   const [faceYaw, setFaceYaw] = useState(0);
-  const [laserOrigin, setLaserOrigin] = useState<{ x: number; y: number }>({ x: 50, y: 28 });
+  const [laserOrigin, setLaserOrigin] = useState<{ x: number; y: number }>({ x: 480, y: 180 });
 
   const currentIdxRef = useRef(0);
   const answersRef = useRef<(0 | 1)[]>(Array(FACE_QUESTIONS.length).fill(-1));
@@ -219,7 +220,8 @@ export function FaceTrackingDemo() {
   const selectionLockedRef = useRef(false);
   const faceYawSampleFrameRef = useRef(0);
   const confirmFxKeyRef = useRef(0);
-  const laserOriginRef = useRef<{ x: number; y: number }>({ x: 50, y: 28 });
+  const laserOriginRef = useRef<{ x: number; y: number }>({ x: 480, y: 180 });
+  const optionButtonRefs = useRef<Array<HTMLButtonElement | null>>([null, null]);
 
   const question = FACE_QUESTIONS[currentIdx];
   const [presets] = useState<VoicePresetKey[]>(() => {
@@ -371,6 +373,38 @@ export function FaceTrackingDemo() {
     return '正视屏幕后，看向左侧或右侧作答';
   }, [confirmedOption, lookOption, question.options]);
 
+  const buildLaserStyle = useCallback((side: 0 | 1, charge: number) => {
+    const root = rootRef.current;
+    const targetButton = optionButtonRefs.current[side];
+    const origin = laserOrigin;
+    if (!root || !targetButton) {
+      return {
+        '--face-laser-origin-x': `${origin.x}px`,
+        '--face-laser-origin-y': `${origin.y}px`,
+        '--face-laser-length': '380px',
+        '--face-laser-angle': side === 0 ? '182deg' : '-2deg',
+        '--face-laser-charge': `${charge}`,
+      } as CSSProperties;
+    }
+
+    const rootRect = root.getBoundingClientRect();
+    const targetRect = targetButton.getBoundingClientRect();
+    const targetX = targetRect.left - rootRect.left + targetRect.width * 0.5;
+    const targetY = targetRect.top - rootRect.top + targetRect.height * 0.5;
+    const dx = targetX - origin.x;
+    const dy = targetY - origin.y;
+    const length = Math.max(120, Math.hypot(dx, dy));
+    const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+
+    return {
+      '--face-laser-origin-x': `${origin.x}px`,
+      '--face-laser-origin-y': `${origin.y}px`,
+      '--face-laser-length': `${length}px`,
+      '--face-laser-angle': `${angle}deg`,
+      '--face-laser-charge': `${charge}`,
+    } as CSSProperties;
+  }, [laserOrigin]);
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -511,12 +545,15 @@ export function FaceTrackingDemo() {
             faceWorldPos.z += faceWorldScale.z * 0.05;
             projected.copy(faceWorldPos).project(camera);
             if (Number.isFinite(projected.x) && Number.isFinite(projected.y)) {
-              const x = THREE.MathUtils.clamp(((projected.x + 1) * 0.5) * 100, 8, 92);
-              const y = THREE.MathUtils.clamp(((1 - projected.y) * 0.5) * 100, 10, 72);
-              const prev = laserOriginRef.current;
-              if (Math.abs(prev.x - x) > 0.35 || Math.abs(prev.y - y) > 0.35) {
-                laserOriginRef.current = { x, y };
-                setLaserOrigin({ x, y });
+              const rootRect = rootRef.current?.getBoundingClientRect();
+              if (rootRect) {
+                const x = THREE.MathUtils.clamp(((projected.x + 1) * 0.5) * rootRect.width, 14, rootRect.width - 14);
+                const y = THREE.MathUtils.clamp(((1 - projected.y) * 0.5) * rootRect.height, 18, rootRect.height - 18);
+                const prev = laserOriginRef.current;
+                if (Math.abs(prev.x - x) > 1.2 || Math.abs(prev.y - y) > 1.2) {
+                  laserOriginRef.current = { x, y };
+                  setLaserOrigin({ x, y });
+                }
               }
             }
           }
@@ -583,7 +620,7 @@ export function FaceTrackingDemo() {
   }, []);
 
   return (
-    <div className="face-demo">
+    <div className="face-demo" ref={rootRef}>
       {/* MindAR 渲染容器（内部会创建 video + canvas） */}
       <div ref={containerRef} className="face-demo__stage" />
 
@@ -609,11 +646,7 @@ export function FaceTrackingDemo() {
           {confirmedOption === null && lookOption !== null ? (
             <div
               className={`face-demo-laser face-demo-laser--${lookOption === 0 ? 'left' : 'right'} face-demo-laser--charge`}
-              style={{
-                '--face-laser-charge': `${holdProgress}`,
-                '--face-laser-origin-x': `${laserOrigin.x}%`,
-                '--face-laser-origin-y': `${laserOrigin.y}%`,
-              } as CSSProperties}
+              style={buildLaserStyle(lookOption, holdProgress)}
               aria-hidden="true"
             >
               <span className="face-demo-laser__beam" />
@@ -624,10 +657,7 @@ export function FaceTrackingDemo() {
             <div
               key={confirmFx.key}
               className={`face-demo-laser face-demo-laser--${confirmFx.side === 0 ? 'left' : 'right'} face-demo-laser--fire`}
-              style={{
-                '--face-laser-origin-x': `${laserOrigin.x}%`,
-                '--face-laser-origin-y': `${laserOrigin.y}%`,
-              } as CSSProperties}
+              style={buildLaserStyle(confirmFx.side, 1)}
               aria-hidden="true"
             >
               <span className="face-demo-laser__beam" />
@@ -643,6 +673,9 @@ export function FaceTrackingDemo() {
               return (
                 <button
                   key={`${question.id}-${option.value}`}
+                  ref={(el) => {
+                    optionButtonRefs.current[index] = el;
+                  }}
                   type="button"
                   className={`face-demo-option face-demo-option--${index === 0 ? 'left' : 'right'}${isActive ? ' face-demo-option--active' : ''}${isConfirmed ? ' face-demo-option--confirmed' : ''}${isShattering ? ' face-demo-option--shatter' : ''}`}
                   style={isActive ? { '--face-select-progress': `${holdProgress * 360}deg` } as CSSProperties : undefined}
