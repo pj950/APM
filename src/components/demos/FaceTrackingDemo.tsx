@@ -102,6 +102,8 @@ const FACE_SELECT_HOLD_MS = 1500;
 const FACE_SELECT_YAW_THRESHOLD = 0.28;
 const FACE_SELECT_CONFIRM_PAUSE_MS = 1100;
 const VOICE_PRESET_KEYS = Object.keys(VOICE_PRESETS) as VoicePresetKey[];
+const LEFT_EYE_LANDMARKS = [33, 133, 159, 145] as const;
+const RIGHT_EYE_LANDMARKS = [362, 263, 386, 374] as const;
 
 type MindARFaceGeometry = THREE.BufferGeometry & {
   updatePositions?: (landmarks: number[][]) => void;
@@ -397,8 +399,17 @@ export function FaceTrackingDemo() {
     const targetRect = targetButton.getBoundingClientRect();
     const targetX = targetRect.left - rootRect.left + targetRect.width * 0.5;
     const targetY = targetRect.top - rootRect.top + targetRect.height * 0.5;
-    const dx = targetX - origin.x;
-    const dy = targetY - origin.y;
+    const rawDx = targetX - origin.x;
+    const rawDy = targetY - origin.y;
+    const rawLen = Math.max(1, Math.hypot(rawDx, rawDy));
+    const nx = -rawDy / rawLen;
+    const ny = rawDx / rawLen;
+    const splitOffset = eye === 'left' ? -24 : 24;
+    const splitTargetX = targetX + nx * splitOffset;
+    const splitTargetY = targetY + ny * splitOffset;
+
+    const dx = splitTargetX - origin.x;
+    const dy = splitTargetY - origin.y;
     const length = Math.max(120, Math.hypot(dx, dy));
     const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
 
@@ -408,6 +419,7 @@ export function FaceTrackingDemo() {
       '--face-laser-length': `${length}px`,
       '--face-laser-angle': `${angle}deg`,
       '--face-laser-charge': `${charge}`,
+      '--face-laser-split': `${splitOffset}px`,
     } as CSSProperties;
   }, [laserOrigins]);
 
@@ -530,10 +542,10 @@ export function FaceTrackingDemo() {
         const faceWorldPos = new THREE.Vector3();
         const faceWorldScale = new THREE.Vector3();
         const projected = new THREE.Vector3();
-        const rightDir = new THREE.Vector3();
-        const upDir = new THREE.Vector3();
+        const leftEyeWorld = new THREE.Vector3();
+        const rightEyeWorld = new THREE.Vector3();
         const forwardDir = new THREE.Vector3();
-        const eyeWorld = new THREE.Vector3();
+        const eyeLocal = new THREE.Vector3();
 
         const projectEye = (
           origin: THREE.Vector3,
@@ -543,6 +555,29 @@ export function FaceTrackingDemo() {
           projected.copy(origin).project(camera);
           out.x = THREE.MathUtils.clamp(((projected.x + 1) * 0.5) * rootRect.width, 14, rootRect.width - 14);
           out.y = THREE.MathUtils.clamp(((1 - projected.y) * 0.5) * rootRect.height, 18, rootRect.height - 18);
+        };
+
+        const sampleEyeWorld = (indices: readonly number[], out: THREE.Vector3) => {
+          const position = faceGeometry.getAttribute('position') as THREE.BufferAttribute | undefined;
+          if (!position || position.count <= 0) return false;
+
+          let sx = 0;
+          let sy = 0;
+          let sz = 0;
+          let valid = 0;
+          for (const idx of indices) {
+            if (idx >= position.count) continue;
+            sx += position.getX(idx);
+            sy += position.getY(idx);
+            sz += position.getZ(idx);
+            valid += 1;
+          }
+          if (valid === 0) return false;
+
+          eyeLocal.set(sx / valid, sy / valid, sz / valid);
+          out.copy(eyeLocal);
+          faceMesh.localToWorld(out);
+          return true;
         };
 
         renderer.setAnimationLoop(() => {
@@ -564,30 +599,24 @@ export function FaceTrackingDemo() {
             faceMesh.getWorldScale(faceWorldScale);
             const rootRect = rootRef.current?.getBoundingClientRect();
             if (rootRect) {
-              rightDir.set(1, 0, 0).applyQuaternion(faceQuaternion).normalize();
-              upDir.set(0, 1, 0).applyQuaternion(faceQuaternion).normalize();
               forwardDir.set(0, 0, 1).applyQuaternion(faceQuaternion).normalize();
-
-              const eyeOffsetX = Math.max(faceWorldScale.x * 0.27, 0.1);
-              const eyeOffsetY = Math.max(faceWorldScale.y * 0.17, 0.05);
-              const eyeOffsetZ = Math.max(faceWorldScale.z * 0.06, 0.03);
+              const eyeForwardOffset = Math.max(faceWorldScale.z * 0.06, 0.03);
 
               const nextLeft = { x: 0, y: 0 };
               const nextRight = { x: 0, y: 0 };
 
-              eyeWorld.copy(faceWorldPos)
-                .addScaledVector(rightDir, -eyeOffsetX)
-                .addScaledVector(upDir, eyeOffsetY)
-                .addScaledVector(forwardDir, eyeOffsetZ);
-              projectEye(eyeWorld, rootRect, nextLeft);
-
-              eyeWorld.copy(faceWorldPos)
-                .addScaledVector(rightDir, eyeOffsetX)
-                .addScaledVector(upDir, eyeOffsetY)
-                .addScaledVector(forwardDir, eyeOffsetZ);
-              projectEye(eyeWorld, rootRect, nextRight);
+              const hasLeftEye = sampleEyeWorld(LEFT_EYE_LANDMARKS, leftEyeWorld);
+              const hasRightEye = sampleEyeWorld(RIGHT_EYE_LANDMARKS, rightEyeWorld);
+              if (hasLeftEye && hasRightEye) {
+                leftEyeWorld.addScaledVector(forwardDir, eyeForwardOffset);
+                rightEyeWorld.addScaledVector(forwardDir, eyeForwardOffset);
+                projectEye(leftEyeWorld, rootRect, nextLeft);
+                projectEye(rightEyeWorld, rootRect, nextRight);
+              }
 
               if (
+                hasLeftEye &&
+                hasRightEye &&
                 Number.isFinite(nextLeft.x) &&
                 Number.isFinite(nextLeft.y) &&
                 Number.isFinite(nextRight.x) &&

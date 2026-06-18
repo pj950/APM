@@ -5975,6 +5975,7 @@ body {
   --face-laser-charge: 0;
   --face-laser-length: 380px;
   --face-laser-angle: 0deg;
+  --face-laser-split: 0px;
   position: absolute;
   top: var(--face-laser-origin-y, 180px);
   left: var(--face-laser-origin-x, 480px);
@@ -5987,11 +5988,11 @@ body {
 }
 
 .face-demo-laser--eye-left {
-  transform: translate(0, -50%) rotate(var(--face-laser-angle)) translateY(-6px);
+  transform: translate(0, -50%) rotate(var(--face-laser-angle)) translateY(-12px);
 }
 
 .face-demo-laser--eye-right {
-  transform: translate(0, -50%) rotate(var(--face-laser-angle)) translateY(6px);
+  transform: translate(0, -50%) rotate(var(--face-laser-angle)) translateY(12px);
 }
 
 .face-demo-laser::before {
@@ -6019,6 +6020,7 @@ body {
   box-shadow: 0 0 20px rgba(255, 67, 67, 0.96), 0 0 52px rgba(255, 36, 36, 0.84), 0 0 96px rgba(255, 36, 36, 0.5);
   transform: translateY(-50%);
   transform-origin: left center;
+  clip-path: polygon(0 46%, 0 54%, 100% 100%, 100% 0);
 }
 
 .face-demo-laser--eye-left .face-demo-laser__beam {
@@ -6050,7 +6052,7 @@ body {
 
 .face-demo-laser--charge .face-demo-laser__beam {
   opacity: calc(0.55 + var(--face-laser-charge) * 0.45);
-  transform: translateY(-50%) scaleX(calc(0.62 + var(--face-laser-charge) * 0.38));
+  transform: translateY(-50%) scaleX(calc(0.4 + var(--face-laser-charge) * 0.6));
   filter: blur(calc(0.6px - min(var(--face-laser-charge), 1) * 0.5px));
 }
 
