@@ -5986,6 +5986,14 @@ body {
   pointer-events: none;
 }
 
+.face-demo-laser--eye-left {
+  transform: translate(0, -50%) rotate(var(--face-laser-angle)) translateY(-6px);
+}
+
+.face-demo-laser--eye-right {
+  transform: translate(0, -50%) rotate(var(--face-laser-angle)) translateY(6px);
+}
+
 .face-demo-laser::before {
   content: '';
   position: absolute;
@@ -6011,6 +6019,15 @@ body {
   box-shadow: 0 0 20px rgba(255, 67, 67, 0.96), 0 0 52px rgba(255, 36, 36, 0.84), 0 0 96px rgba(255, 36, 36, 0.5);
   transform: translateY(-50%);
   transform-origin: left center;
+}
+
+.face-demo-laser--eye-left .face-demo-laser__beam {
+  box-shadow: 0 0 20px rgba(255, 67, 67, 0.96), 0 0 52px rgba(255, 36, 36, 0.84), 0 0 96px rgba(255, 36, 36, 0.5);
+}
+
+.face-demo-laser--eye-right .face-demo-laser__beam {
+  box-shadow: 0 0 16px rgba(255, 120, 80, 0.96), 0 0 42px rgba(255, 90, 52, 0.8), 0 0 84px rgba(255, 78, 44, 0.46);
+  opacity: 0.92;
 }
 
 .face-demo-laser__beam::before,
@@ -6104,6 +6121,56 @@ body {
 
 .face-demo-option--shatter {
   animation: face-demo-option-shatter 720ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.face-demo-option--blasted {
+  animation: face-demo-option-blast-shake 360ms linear 1;
+}
+
+.face-demo-option__blast-ring,
+.face-demo-option__blast-core,
+.face-demo-option__blast-sparks {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.face-demo-option__blast-ring {
+  width: 26px;
+  height: 26px;
+  margin-left: -13px;
+  margin-top: -13px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 104, 104, 0.92);
+  box-shadow: 0 0 14px rgba(255, 74, 74, 0.85), 0 0 34px rgba(255, 74, 74, 0.45);
+  animation: face-demo-blast-ring 420ms ease-out forwards;
+}
+
+.face-demo-option__blast-core {
+  width: 16px;
+  height: 16px;
+  margin-left: -8px;
+  margin-top: -8px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 245, 245, 1) 0%, rgba(255, 102, 102, 0.92) 50%, rgba(255, 36, 36, 0) 100%);
+  box-shadow: 0 0 20px rgba(255, 82, 82, 0.95), 0 0 42px rgba(255, 60, 60, 0.65);
+  animation: face-demo-blast-core 260ms ease-out forwards;
+}
+
+.face-demo-option__blast-sparks {
+  width: 90px;
+  height: 90px;
+  margin-left: -45px;
+  margin-top: -45px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 12% 36%, rgba(255, 236, 236, 0.96) 0 2px, rgba(255, 236, 236, 0) 3px),
+    radial-gradient(circle at 80% 24%, rgba(255, 214, 214, 0.9) 0 2px, rgba(255, 214, 214, 0) 3px),
+    radial-gradient(circle at 70% 76%, rgba(255, 180, 180, 0.9) 0 2px, rgba(255, 180, 180, 0) 3px),
+    radial-gradient(circle at 24% 78%, rgba(255, 212, 212, 0.92) 0 2px, rgba(255, 212, 212, 0) 3px),
+    radial-gradient(circle at 52% 16%, rgba(255, 238, 238, 0.94) 0 2px, rgba(255, 238, 238, 0) 3px);
+  animation: face-demo-blast-sparks 500ms ease-out forwards;
 }
 
 .face-demo-option__shard {
@@ -6227,6 +6294,64 @@ body {
     transform: translate3d(0, 7px, 0) scale(0.96);
     opacity: 0.72;
     filter: brightness(0.76);
+  }
+}
+
+@keyframes face-demo-option-blast-shake {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+
+  25% {
+    transform: translate3d(-2px, 1px, 0);
+  }
+
+  50% {
+    transform: translate3d(2px, -1px, 0);
+  }
+
+  75% {
+    transform: translate3d(-1px, 1px, 0);
+  }
+
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes face-demo-blast-ring {
+  0% {
+    opacity: 1;
+    transform: scale(0.45);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(2.7);
+  }
+}
+
+@keyframes face-demo-blast-core {
+  0% {
+    opacity: 1;
+    transform: scale(0.65);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(2.15);
+  }
+}
+
+@keyframes face-demo-blast-sparks {
+  0% {
+    opacity: 0.95;
+    transform: scale(0.5);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.55);
   }
 }
 

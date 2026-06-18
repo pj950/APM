@@ -568,7 +568,7 @@ export function FaceTrackingDemo() {
               upDir.set(0, 1, 0).applyQuaternion(faceQuaternion).normalize();
               forwardDir.set(0, 0, 1).applyQuaternion(faceQuaternion).normalize();
 
-              const eyeOffsetX = Math.max(faceWorldScale.x * 0.19, 0.07);
+              const eyeOffsetX = Math.max(faceWorldScale.x * 0.27, 0.1);
               const eyeOffsetY = Math.max(faceWorldScale.y * 0.17, 0.05);
               const eyeOffsetZ = Math.max(faceWorldScale.z * 0.06, 0.03);
 
@@ -740,6 +740,7 @@ export function FaceTrackingDemo() {
               const isActive = lookOption === index;
               const isConfirmed = confirmedOption === index;
               const isShattering = isConfirmed;
+              const isBlasted = isConfirmed;
               return (
                 <button
                   key={`${question.id}-${option.value}`}
@@ -747,7 +748,7 @@ export function FaceTrackingDemo() {
                     optionButtonRefs.current[index] = el;
                   }}
                   type="button"
-                  className={`face-demo-option face-demo-option--${index === 0 ? 'left' : 'right'}${isActive ? ' face-demo-option--active' : ''}${isConfirmed ? ' face-demo-option--confirmed' : ''}${isShattering ? ' face-demo-option--shatter' : ''}`}
+                  className={`face-demo-option face-demo-option--${index === 0 ? 'left' : 'right'}${isActive ? ' face-demo-option--active' : ''}${isConfirmed ? ' face-demo-option--confirmed' : ''}${isShattering ? ' face-demo-option--shatter' : ''}${isBlasted ? ' face-demo-option--blasted' : ''}`}
                   style={isActive ? { '--face-select-progress': `${holdProgress * 360}deg` } as CSSProperties : undefined}
                   onClick={() => handleAnswer(option.value)}
                 >
@@ -756,6 +757,13 @@ export function FaceTrackingDemo() {
                       <span className="face-demo-option__shard face-demo-option__shard--one" />
                       <span className="face-demo-option__shard face-demo-option__shard--two" />
                       <span className="face-demo-option__shard face-demo-option__shard--three" />
+                    </>
+                  ) : null}
+                  {isBlasted ? (
+                    <>
+                      <span className="face-demo-option__blast-ring" />
+                      <span className="face-demo-option__blast-core" />
+                      <span className="face-demo-option__blast-sparks" />
                     </>
                   ) : null}
                   <span className="face-demo-option__index">{index === 0 ? '← 看向左侧选择' : '看向右侧选择 →'}</span>
