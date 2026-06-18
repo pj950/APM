@@ -98,9 +98,9 @@ const FACE_QUESTIONS: FaceQuestion[] = [
   },
 ];
 
-const FACE_SELECT_HOLD_MS = 1000;
-const FACE_SELECT_YAW_THRESHOLD = 0.2;
-const FACE_SELECT_CONFIRM_PAUSE_MS = 900;
+const FACE_SELECT_HOLD_MS = 1500;
+const FACE_SELECT_YAW_THRESHOLD = 0.28;
+const FACE_SELECT_CONFIRM_PAUSE_MS = 1100;
 const VOICE_PRESET_KEYS = Object.keys(VOICE_PRESETS) as VoicePresetKey[];
 
 type MindARFaceGeometry = THREE.BufferGeometry & {
@@ -249,7 +249,7 @@ export function FaceTrackingDemo() {
         `第 ${index + 1} 题。${item.text}。`,
         `看向左侧选择左边，${toSpeechLabel(item.options[0].label)}。`,
         `看向右侧选择右边，${toSpeechLabel(item.options[1].label)}。`,
-        '保持一小段时间即可确认。',
+        '持续保持大约一点五秒即可确认。',
       ].join(' ');
       void prefetchTTS(speechText, presets[index]);
     });
@@ -265,7 +265,7 @@ export function FaceTrackingDemo() {
       `第 ${currentIdxRef.current + 1} 题。${activeQuestion.text}。`,
       `看向左侧选择左边，${toSpeechLabel(activeQuestion.options[0].label)}。`,
       `看向右侧选择右边，${toSpeechLabel(activeQuestion.options[1].label)}。`,
-      '保持一小段时间即可确认。',
+      '持续保持大约一点五秒即可确认。',
     ].join(' ');
 
     speakWithPreset(
@@ -585,10 +585,20 @@ export function FaceTrackingDemo() {
 
       {status === 'running' ? (
         <>
+          {confirmedOption === null && lookOption !== null ? (
+            <div
+              className={`face-demo-laser face-demo-laser--${lookOption === 0 ? 'left' : 'right'} face-demo-laser--charge`}
+              style={{ '--face-laser-charge': `${Math.max(holdProgress, 0.18)}` } as CSSProperties}
+              aria-hidden="true"
+            >
+              <span className="face-demo-laser__beam" />
+            </div>
+          ) : null}
+
           {confirmFx ? (
             <div
               key={confirmFx.key}
-              className={`face-demo-laser face-demo-laser--${confirmFx.side === 0 ? 'left' : 'right'}`}
+              className={`face-demo-laser face-demo-laser--${confirmFx.side === 0 ? 'left' : 'right'} face-demo-laser--fire`}
               aria-hidden="true"
             >
               <span className="face-demo-laser__beam" />
@@ -621,7 +631,7 @@ export function FaceTrackingDemo() {
                   {isConfirmed ? (
                     <span className="face-demo-option__hold">已选择，正在进入下一题…</span>
                   ) : isActive ? (
-                    <span className="face-demo-option__hold">保持确认</span>
+                    <span className="face-demo-option__hold">保持 1.5 秒确认</span>
                   ) : null}
                 </button>
               );
