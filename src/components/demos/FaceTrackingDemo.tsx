@@ -210,7 +210,10 @@ export function FaceTrackingDemo() {
   const [confirmFx, setConfirmFx] = useState<{ side: 0 | 1; key: number } | null>(null);
   const [holdProgress, setHoldProgress] = useState(0);
   const [faceYaw, setFaceYaw] = useState(0);
-  const [laserOrigin, setLaserOrigin] = useState<{ x: number; y: number }>({ x: 480, y: 180 });
+  const [laserOrigins, setLaserOrigins] = useState<{ left: { x: number; y: number }; right: { x: number; y: number } }>({
+    left: { x: 452, y: 176 },
+    right: { x: 508, y: 176 },
+  });
 
   const currentIdxRef = useRef(0);
   const answersRef = useRef<(0 | 1)[]>(Array(FACE_QUESTIONS.length).fill(-1));
@@ -220,7 +223,10 @@ export function FaceTrackingDemo() {
   const selectionLockedRef = useRef(false);
   const faceYawSampleFrameRef = useRef(0);
   const confirmFxKeyRef = useRef(0);
-  const laserOriginRef = useRef<{ x: number; y: number }>({ x: 480, y: 180 });
+  const laserOriginsRef = useRef<{ left: { x: number; y: number }; right: { x: number; y: number } }>({
+    left: { x: 452, y: 176 },
+    right: { x: 508, y: 176 },
+  });
   const optionButtonRefs = useRef<Array<HTMLButtonElement | null>>([null, null]);
 
   const question = FACE_QUESTIONS[currentIdx];
@@ -373,10 +379,10 @@ export function FaceTrackingDemo() {
     return '正视屏幕后，看向左侧或右侧作答';
   }, [confirmedOption, lookOption, question.options]);
 
-  const buildLaserStyle = useCallback((side: 0 | 1, charge: number) => {
+  const buildLaserStyle = useCallback((side: 0 | 1, charge: number, eye: 'left' | 'right') => {
     const root = rootRef.current;
     const targetButton = optionButtonRefs.current[side];
-    const origin = laserOrigin;
+    const origin = laserOrigins[eye];
     if (!root || !targetButton) {
       return {
         '--face-laser-origin-x': `${origin.x}px`,
@@ -403,7 +409,7 @@ export function FaceTrackingDemo() {
       '--face-laser-angle': `${angle}deg`,
       '--face-laser-charge': `${charge}`,
     } as CSSProperties;
-  }, [laserOrigin]);
+  }, [laserOrigins]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -524,6 +530,21 @@ export function FaceTrackingDemo() {
         const faceWorldPos = new THREE.Vector3();
         const faceWorldScale = new THREE.Vector3();
         const projected = new THREE.Vector3();
+        const rightDir = new THREE.Vector3();
+        const upDir = new THREE.Vector3();
+        const forwardDir = new THREE.Vector3();
+        const eyeWorld = new THREE.Vector3();
+
+        const projectEye = (
+          origin: THREE.Vector3,
+          rootRect: DOMRect,
+          out: { x: number; y: number },
+        ) => {
+          projected.copy(origin).project(camera);
+          out.x = THREE.MathUtils.clamp(((projected.x + 1) * 0.5) * rootRect.width, 14, rootRect.width - 14);
+          out.y = THREE.MathUtils.clamp(((1 - projected.y) * 0.5) * rootRect.height, 18, rootRect.height - 18);
+        };
+
         renderer.setAnimationLoop(() => {
           const shader = faceMaterial.userData.shader as { uniforms?: Record<string, { value: unknown }> } | undefined;
           const elapsed = clock.getElapsedTime();
@@ -538,21 +559,50 @@ export function FaceTrackingDemo() {
           if (faceYawSampleFrameRef.current % 3 === 0) {
             setFaceYaw(yaw);
 
-            // 将激光起点绑定到实时人脸屏幕坐标，并轻微上移到双眼附近。
+            // 分别投影左右眼近似位置，渲染为双束激光。
             faceMesh.getWorldPosition(faceWorldPos);
             faceMesh.getWorldScale(faceWorldScale);
-            faceWorldPos.y += faceWorldScale.y * 0.34;
-            faceWorldPos.z += faceWorldScale.z * 0.05;
-            projected.copy(faceWorldPos).project(camera);
-            if (Number.isFinite(projected.x) && Number.isFinite(projected.y)) {
-              const rootRect = rootRef.current?.getBoundingClientRect();
-              if (rootRect) {
-                const x = THREE.MathUtils.clamp(((projected.x + 1) * 0.5) * rootRect.width, 14, rootRect.width - 14);
-                const y = THREE.MathUtils.clamp(((1 - projected.y) * 0.5) * rootRect.height, 18, rootRect.height - 18);
-                const prev = laserOriginRef.current;
-                if (Math.abs(prev.x - x) > 1.2 || Math.abs(prev.y - y) > 1.2) {
-                  laserOriginRef.current = { x, y };
-                  setLaserOrigin({ x, y });
+            const rootRect = rootRef.current?.getBoundingClientRect();
+            if (rootRect) {
+              rightDir.set(1, 0, 0).applyQuaternion(faceQuaternion).normalize();
+              upDir.set(0, 1, 0).applyQuaternion(faceQuaternion).normalize();
+              forwardDir.set(0, 0, 1).applyQuaternion(faceQuaternion).normalize();
+
+              const eyeOffsetX = Math.max(faceWorldScale.x * 0.19, 0.07);
+              const eyeOffsetY = Math.max(faceWorldScale.y * 0.17, 0.05);
+              const eyeOffsetZ = Math.max(faceWorldScale.z * 0.06, 0.03);
+
+              const nextLeft = { x: 0, y: 0 };
+              const nextRight = { x: 0, y: 0 };
+
+              eyeWorld.copy(faceWorldPos)
+                .addScaledVector(rightDir, -eyeOffsetX)
+                .addScaledVector(upDir, eyeOffsetY)
+                .addScaledVector(forwardDir, eyeOffsetZ);
+              projectEye(eyeWorld, rootRect, nextLeft);
+
+              eyeWorld.copy(faceWorldPos)
+                .addScaledVector(rightDir, eyeOffsetX)
+                .addScaledVector(upDir, eyeOffsetY)
+                .addScaledVector(forwardDir, eyeOffsetZ);
+              projectEye(eyeWorld, rootRect, nextRight);
+
+              if (
+                Number.isFinite(nextLeft.x) &&
+                Number.isFinite(nextLeft.y) &&
+                Number.isFinite(nextRight.x) &&
+                Number.isFinite(nextRight.y)
+              ) {
+                const prev = laserOriginsRef.current;
+                const moved =
+                  Math.abs(prev.left.x - nextLeft.x) > 1.2 ||
+                  Math.abs(prev.left.y - nextLeft.y) > 1.2 ||
+                  Math.abs(prev.right.x - nextRight.x) > 1.2 ||
+                  Math.abs(prev.right.y - nextRight.y) > 1.2;
+
+                if (moved) {
+                  laserOriginsRef.current = { left: nextLeft, right: nextRight };
+                  setLaserOrigins({ left: nextLeft, right: nextRight });
                 }
               }
             }
@@ -644,25 +694,45 @@ export function FaceTrackingDemo() {
       {status === 'running' ? (
         <>
           {confirmedOption === null && lookOption !== null ? (
-            <div
-              className={`face-demo-laser face-demo-laser--${lookOption === 0 ? 'left' : 'right'} face-demo-laser--charge`}
-              style={buildLaserStyle(lookOption, holdProgress)}
-              aria-hidden="true"
-            >
-              <span className="face-demo-laser__beam" />
-            </div>
+            <>
+              <div
+                className={`face-demo-laser face-demo-laser--${lookOption === 0 ? 'left' : 'right'} face-demo-laser--charge face-demo-laser--eye-left`}
+                style={buildLaserStyle(lookOption, holdProgress, 'left')}
+                aria-hidden="true"
+              >
+                <span className="face-demo-laser__beam" />
+              </div>
+              <div
+                className={`face-demo-laser face-demo-laser--${lookOption === 0 ? 'left' : 'right'} face-demo-laser--charge face-demo-laser--eye-right`}
+                style={buildLaserStyle(lookOption, holdProgress, 'right')}
+                aria-hidden="true"
+              >
+                <span className="face-demo-laser__beam" />
+              </div>
+            </>
           ) : null}
 
           {confirmFx ? (
-            <div
-              key={confirmFx.key}
-              className={`face-demo-laser face-demo-laser--${confirmFx.side === 0 ? 'left' : 'right'} face-demo-laser--fire`}
-              style={buildLaserStyle(confirmFx.side, 1)}
-              aria-hidden="true"
-            >
-              <span className="face-demo-laser__beam" />
-              <span className="face-demo-laser__flash" />
-            </div>
+            <>
+              <div
+                key={`left-${confirmFx.key}`}
+                className={`face-demo-laser face-demo-laser--${confirmFx.side === 0 ? 'left' : 'right'} face-demo-laser--fire face-demo-laser--eye-left`}
+                style={buildLaserStyle(confirmFx.side, 1, 'left')}
+                aria-hidden="true"
+              >
+                <span className="face-demo-laser__beam" />
+                <span className="face-demo-laser__flash" />
+              </div>
+              <div
+                key={`right-${confirmFx.key}`}
+                className={`face-demo-laser face-demo-laser--${confirmFx.side === 0 ? 'left' : 'right'} face-demo-laser--fire face-demo-laser--eye-right`}
+                style={buildLaserStyle(confirmFx.side, 1, 'right')}
+                aria-hidden="true"
+              >
+                <span className="face-demo-laser__beam" />
+                <span className="face-demo-laser__flash" />
+              </div>
+            </>
           ) : null}
 
           <div className="face-demo-question-options">
