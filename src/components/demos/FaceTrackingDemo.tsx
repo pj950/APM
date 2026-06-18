@@ -485,8 +485,8 @@ export function FaceTrackingDemo() {
         fillLight.position.set(2.2, 0.6, 1.6);
         scene.add(fillLight);
 
-        // 预加载所有 Unity 面部贴图
-        setLoadProgress({ done: 0, total: UNITY_FACE_TEXTURES.length });
+        // 预加载 Unity 面部贴图（与摄像头启动并行）
+        setLoadProgress({ done: 0, total: 2 });
         const loader = new THREE.TextureLoader();
         const loadOne = (file: string) =>
           new Promise<THREE.Texture | null>((resolve) => {
@@ -495,19 +495,20 @@ export function FaceTrackingDemo() {
               (tex) => {
                 tex.colorSpace = THREE.SRGBColorSpace;
                 tex.flipY = false; // MindAR/MediaPipe 人脸网格 UV 与 glTF 一致，需关闭翻转
-                setLoadProgress((p) => ({ done: p.done + 1, total: p.total }));
                 resolve(tex);
               },
               undefined,
               (err) => {
                 console.warn(`[FaceTrackingDemo] 贴图加载失败: ${file}`, err);
-                setLoadProgress((p) => ({ done: p.done + 1, total: p.total }));
                 resolve(null);
               },
             );
           });
 
-        const loaded = await Promise.all(UNITY_FACE_TEXTURES.map((t) => loadOne(t.file)));
+        // 并行加载贴图和启动摄像头，大幅缩短总加载时间
+        const texturePromise = Promise.all(UNITY_FACE_TEXTURES.map((t) => loadOne(t.file)));
+        const cameraPromise = mindarThree.start();
+        const [loaded] = await Promise.all([texturePromise, cameraPromise]);
         if (disposed) return;
 
         const validIndices: number[] = [];
@@ -531,9 +532,8 @@ export function FaceTrackingDemo() {
         // 并不会自动加入场景，必须手动 add，否则贴图永远不会被渲染。
         scene.add(faceMesh);
 
-        // 启动摄像头 + 人脸追踪
-        await mindarThree.start();
         if (disposed) return;
+        setLoadProgress({ done: 2, total: 2 });
 
         const { camera } = mindarThree;
         const clock = new THREE.Clock();
