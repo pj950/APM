@@ -53,7 +53,7 @@ export function useStateMachine() {
       timerRef.current = null;
     }
 
-    if (currentStage === 'QUESTIONING') {
+    if (currentStage === 'QUESTIONING' || currentStage === 'QUESTIONING_TEST') {
       // 问答阶段不自动超时，避免用户在作答过程中被强制退出。
       lastActivityRef.current = Date.now();
     } else if (currentStage === 'RESULT') {

@@ -54,11 +54,11 @@ STANDBY → SCANNING → QUESTIONING → GENERATING → RESULT → STANDBY
 
 ```bash
 cd ai-mirror
-npm run dev        # 启动开发服务器 (localhost:5173)
+npm run dev        # 启动开发服务器 (localhost:5174)
 npm run build      # 生产构建
 ```
 
-开发服务器固定使用 `localhost:5173`，并启用 Vite `strictPort`；如果 5173 已被占用，服务会直接报错，不会自动跳到 5174/5175/5176。
+开发服务器固定使用 `localhost:5174`，并启用 Vite `strictPort`；如果 5174 已被占用，服务会直接报错，不会自动跳到 5174/5175/5176。
 
 `public/model/` 与 `public/images/` 体积较大，作为本地资源目录保留，不随 Git 推送；需要这些模型或人格图片时，从本机备份复制到对应目录即可。
 
@@ -76,15 +76,10 @@ npm run build      # 生产构建
 
 - 使用 [`mind-ar`](https://github.com/hiukim/mind-ar-js)（MIT，基于 TensorFlow.js + MediaPipe face mesh）独占摄像头并自带 Three.js 渲染。
 - 进入 `FACE_DEMO` 后，CV 主管线（`useCVCapture`）会主动让出摄像头（`FACE_DEMO` 已从 `isCameraStageActive` 移除），避免与 MindAR 抢占设备。
-- `FACE_DEMO` 已集成 6 题二选一答题流程：页面保留 MindAR face mesh 面具，同时在顶部显示左右选项、底部显示当前题；不使用举手识别，直接读取 MindAR 面部网格的头部 yaw，用户看向左侧/右侧并保持约 1.5 秒即可确认对应选项，答完后写入 6 维人格并进入生成阶段。
+- `FACE_DEMO` 已集成 6 题二选一答题流程：页面保留 MindAR face mesh 面具，同时在顶部显示左右选项、底部显示当前题；不使用举手识别，直接读取 MindAR 面部网格的头部 yaw，用户看向左侧/右侧并保持约 1 秒即可确认对应选项，答完后写入 6 维人格并进入生成阶段。
 - 左右语义已校正为“看左选左、看右选右”（按用户视角），避免镜像预览和世界坐标符号差异导致反选。
-- `FACE_DEMO` 的确认反馈已升级为“看向即开火”：看向某侧并进入保持阶段时，会先出现红色预瞄激光；达到阈值并完成保持后，立即触发更亮更粗的红色命中激光，同时被命中的答案卡触发崩碎动画，再进入下一题，避免无感跳题。
-- 激光起点已从固定 UI 位置改为跟随人脸屏幕投影（双眼附近偏移），并进一步提速与加粗（预瞄即现、确认瞬发），避免“选完才看到”或“线太细不明显”。
-- 激光轨迹已升级为“双眼位置 -> 当前答案框中心”的实时向量射线：左右眼各自发出一束红色激光，动态计算角度和长度直指目标，并叠加多层束芯与密纹光束，让命中路径更粗更密更清晰。
-- 为避免视觉重叠成单束，左右眼激光加入了分离偏移与差异化辉光；命中答案框时会触发“直接射炸”效果（冲击环 + 爆闪核心 + 火花 + 短促震颤 + 碎裂）。
-- 左右眼起点改为 face mesh 的眼部关键点实时采样，不再使用鼻梁附近估算；双束轨迹采用“前窄后宽”楔形束体并做目标分离偏置，视觉上会明显拆开。
-- 为降低误触，确认阈值已提高（yaw 约 ±0.28），并保留更清晰的“保持确认”提示。
-- 为保证不同屏幕和帧率下都清晰可见，激光采用“父层定位 + 子层 beam/flash 动画”结构，且延长了可见时长并提高亮度，避免动画覆盖位移或帧率波动导致光束难以察觉。
+- `FACE_DEMO` 的确认反馈已升级为“看向即开火”：头部朝向达到阈值并完成保持后，会从中心朝被选方向打出一道短促激光，同时被命中的答案卡触发崩碎动画，再进入下一题，避免无感跳题。
+- 为保证不同屏幕和帧率下都清晰可见，激光采用“父层定位 + 子层 beam/flash 动画”结构，避免动画覆盖左右方向位移导致光束丢失。
 - **直接复用 `dilmerv/FaceTrackingDemo` 的 Unity 原始面具贴图**：该 Unity 项目的“面具”并不是 3D 模型，而是贴在 AR 人脸网格上的 2D 面部贴图（`Assets/Textures/` 下的 `cartoon` / `humanface` / `virus1` / `virus2` / `superheros` / `uv`）。这些贴图已下载到 `public/unity-face/textures/`；当前自动轮换只启用 `cartoon` / `superheros` / `uv`，暂不轮换 `humanface` / `virus1` / `virus2`。
 - 实现上用 MindAR 的人脸网格（`addFaceMesh()`）作为载体，把这些贴图 UV 映射到实时追踪到的脸上；所有贴图预加载，切换时只替换材质贴图 uniform，每 5 秒自动轮换一张（对齐 Unity 里 `ToggleFace` 的切换演示），零延迟。
 - `cartoon` 路径使用了自定义 ShaderMaterial 复刻 `CartoonAnimated`：核心为 UV 绕中心随时间连续旋转，并做 ×2 emission 提亮。

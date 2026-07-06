@@ -52,7 +52,7 @@ export interface VisualArchetype {
 }
 
 /** 应用阶段枚举 */
-export type AppStage = 'STANDBY' | 'SCANNING' | 'QUESTIONING' | 'GENERATING' | 'RESULT' | 'DIALOGUE' | 'TAROT' | 'WATER_DEMO' | 'GUMGUM_DEMO' | 'FACE_DEMO';
+export type AppStage = 'STANDBY' | 'SCANNING' | 'QUESTIONING' | 'QUESTIONING_TEST' | 'GENERATING' | 'RESULT' | 'DIALOGUE' | 'TAROT' | 'WATER_DEMO' | 'GUMGUM_DEMO' | 'FACE_DEMO';
 
 /** 镜像对话消息 */
 export interface DialogueMessage {
@@ -71,7 +71,6 @@ export interface AppState {
   faceLandmarks: number[][] | null;
   poseLandmarks: number[][] | null;  // 原始 pose 骨骼点 (用于人形粒子渲染)
   handLandmarks: number[][] | null;  // 手部关键点 (用于手指计数手势)
-  externalFaceVideo: HTMLVideoElement | null;  // 由 MindAR 接管摄像头时，供 CV 管线取帧做 pose 检测的视频源
   trackingStatus: 'idle' | 'loading' | 'ready' | 'error';
   trackingError: string | null;
   qaAnswers: QASelection[];
@@ -88,7 +87,6 @@ export interface AppState {
   updateFaceLandmarks: (landmarks: number[][] | null) => void;
   updatePoseLandmarks: (landmarks: number[][] | null) => void;
   updateHandLandmarks: (landmarks: number[][] | null) => void;
-  setExternalFaceVideo: (video: HTMLVideoElement | null) => void;
   setTrackingStatus: (status: AppState['trackingStatus']) => void;
   setTrackingError: (error: string | null) => void;
   addQAAnswer: (answer: QASelection) => void;

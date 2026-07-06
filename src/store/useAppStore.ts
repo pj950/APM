@@ -86,7 +86,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   faceLandmarks: null,
   poseLandmarks: null,
   handLandmarks: null,
-  externalFaceVideo: null,
   trackingStatus: 'idle',
   trackingError: null,
   qaAnswers: [],
@@ -117,8 +116,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   updatePoseLandmarks: (landmarks) => set({ poseLandmarks: landmarks }),
 
   updateHandLandmarks: (landmarks) => set({ handLandmarks: landmarks }),
-
-  setExternalFaceVideo: (video) => set({ externalFaceVideo: video }),
 
   setTrackingStatus: (status) => set({ trackingStatus: status }),
 

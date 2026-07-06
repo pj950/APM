@@ -28,43 +28,43 @@ type AmbientType = 'cave' | 'electronic' | 'hall' | 'void' | 'none';
 
 export const VOICE_PRESETS: Record<VoicePresetKey, VoicePreset> = {
   gollum: {
-    name: '擎天柱 · 坚毅',
-    description: '擎天柱领袖音色 - 深沉而坚毅的机械共鸣',
-    pitch: 0.25,
-    rate: 0.85,
-    playbackRate: 0.8,
-    ambientType: 'electronic',
+    name: '旁白 · 低稳',
+    description: '低稳清晰的中文旁白，轻微空间感',
+    pitch: 0.82,
+    rate: 0.95,
+    playbackRate: 0.96,
+    ambientType: 'none',
   },
   robot: {
-    name: '擎天柱 · 金属',
-    description: '擎天柱金属音色 - 带有金属梳状混响的机械声',
-    pitch: 0.25,
-    rate: 0.85,
-    playbackRate: 0.82,
-    ambientType: 'electronic',
+    name: '旁白 · 电子',
+    description: '轻电子质感，保留清晰咬字',
+    pitch: 0.88,
+    rate: 0.96,
+    playbackRate: 0.98,
+    ambientType: 'none',
   },
   ethereal: {
-    name: '擎天柱 · 宏大',
-    description: '擎天柱空间音色 - 宏大空旷的钢铁殿堂回鸣',
-    pitch: 0.3,
-    rate: 0.88,
-    playbackRate: 0.85,
-    ambientType: 'hall',
+    name: '旁白 · 空灵',
+    description: '明亮柔和的空间旁白',
+    pitch: 1.02,
+    rate: 0.95,
+    playbackRate: 1.0,
+    ambientType: 'none',
   },
   deep: {
-    name: '擎天柱 · 终极',
-    description: '擎天柱深渊音色 - 极度低沉厚重的大黄蜂伴侣声线',
-    pitch: 0.15,
-    rate: 0.8,
-    playbackRate: 0.72,
-    ambientType: 'void',
+    name: '旁白 · 深声',
+    description: '稍低沉但不压字的中文旁白',
+    pitch: 0.72,
+    rate: 0.92,
+    playbackRate: 0.94,
+    ambientType: 'none',
   },
   crystal: {
-    name: '擎天柱 · 经典',
-    description: '擎天柱经典音色 - 均衡的塞伯坦机械人声',
-    pitch: 0.3,
-    rate: 0.9,
-    playbackRate: 0.85,
+    name: '旁白 · 清晰',
+    description: '默认答题音色，清晰自然、少特效',
+    pitch: 0.95,
+    rate: 0.96,
+    playbackRate: 1.0,
     ambientType: 'none',
   },
 };
@@ -143,7 +143,7 @@ function sampleTTSAudioMeter() {
     return;
   }
 
-  ttsAudioAnalyser.getByteTimeDomainData(ttsAudioData);
+  ttsAudioAnalyser.getByteTimeDomainData(ttsAudioData as Parameters<AnalyserNode['getByteTimeDomainData']>[0]);
 
   let sumSquares = 0;
   for (let index = 0; index < ttsAudioData.length; index++) {
@@ -643,7 +643,16 @@ function playAudioBufferWithPreset(
     currentEffectsNodes.push(eqFilter);
   }
 
-  // 2. Ring Modulation (金属机械环形调制器)：擎天柱的机械发声器关键
+  if (presetKey === 'crystal') {
+    attachTTSAudioMeter(ctx, lastNode);
+    source.onended = () => {
+      onFinished();
+    };
+    source.start();
+    return;
+  }
+
+  // 2. Ring Modulation (轻量电子质感处理，默认清晰音色会跳过此段)
   const ringMod = ctx.createGain();
   ringMod.gain.value = 0.0;
 
@@ -664,8 +673,8 @@ function playAudioBufferWithPreset(
   // 调制深度：通过在最后混合干声和调制声，或者限制调制量来确保语音可懂度
   const dryGain = ctx.createGain();
   const wetGain = ctx.createGain();
-  dryGain.gain.value = 0.45; // 45% 干声
-  wetGain.gain.value = 0.55; // 55% 机械调制声
+  dryGain.gain.value = 0.88;
+  wetGain.gain.value = 0.12;
 
   carrier.connect(ringMod.gain);
   lastNode.connect(ringMod); // 输入连接到调制器
@@ -699,7 +708,7 @@ function playAudioBufferWithPreset(
     ctx,
     combDelays[presetKey],
     combFeedbacks[presetKey],
-    0.45 // wet 比例
+    0.12
   );
   lastNode.connect(combIn);
   lastNode = combOut;
@@ -714,18 +723,18 @@ function playAudioBufferWithPreset(
     crystal: 0.12,
   };
   const reverbFeedbacks: Record<VoicePresetKey, number> = {
-    gollum: 0.35,
-    robot: 0.30,
-    ethereal: 0.52,
-    deep: 0.45,
-    crystal: 0.20,
+    gollum: 0.12,
+    robot: 0.10,
+    ethereal: 0.18,
+    deep: 0.14,
+    crystal: 0.08,
   };
   const reverbWets: Record<VoicePresetKey, number> = {
-    gollum: 0.30,
-    robot: 0.28,
-    ethereal: 0.42,
-    deep: 0.38,
-    crystal: 0.18,
+    gollum: 0.08,
+    robot: 0.06,
+    ethereal: 0.12,
+    deep: 0.08,
+    crystal: 0.04,
   };
   const { input: delayIn, output: delayOut } = createDelayEffect(
     ctx,
@@ -758,7 +767,10 @@ function playSpeechSynthesisFallback(text: string, presetKey: VoicePresetKey) {
   utterance.lang = 'zh-CN';
 
   const voices = window.speechSynthesis.getVoices();
+  const preferredVoiceNames = ['Xiaoxiao', 'Xiaoyi', 'Yunxi', 'Yunjian', 'Huihui', 'Yaoyao', 'Kangkang'];
   const cnVoice = voices.find(
+    (v) => preferredVoiceNames.some((name) => v.name.includes(name)) && /zh|ZH|Chinese/i.test(v.lang + v.name)
+  ) || voices.find(
     (v) =>
       v.lang.includes('ZH') ||
       v.lang.includes('zh') ||

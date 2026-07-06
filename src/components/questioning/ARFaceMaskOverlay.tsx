@@ -173,7 +173,7 @@ export function ARFaceMaskOverlay() {
     };
   })();
 
-  if (currentStage !== 'QUESTIONING' || !transform) {
+  if (currentStage !== 'QUESTIONING_TEST' || !transform) {
     return null;
   }
 

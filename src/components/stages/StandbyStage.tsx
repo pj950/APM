@@ -223,6 +223,14 @@ export function StandbyStage() {
             🎭 面部追踪演示
           </button>
           <button
+            className="btn-fluid-action btn-fluid-action--secondary"
+            type="button"
+            onClick={() => setStage('QUESTIONING_TEST')}
+            style={{ borderColor: 'rgba(125, 232, 255, 0.32)', color: '#bceeff' }}
+          >
+            🧪 旧版答题测试
+          </button>
+          <button
             className="btn-fluid-action btn-fluid-action--tertiary"
             type="button"
             onClick={() => setFluidModeActive(false)}

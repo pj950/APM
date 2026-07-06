@@ -10,7 +10,7 @@ import type { CVFeatures } from '../types';
 const ENABLE_FACE_LANDMARKS = true;
 const ENABLE_FACE_ANALYTICS = false;
 const isCameraStageActive = (stage: string, fluidModeActive: boolean) =>
-  stage === 'SCANNING' || stage === 'QUESTIONING' || stage === 'WATER_DEMO' || stage === 'GUMGUM_DEMO' || (stage === 'STANDBY' && fluidModeActive);
+  stage === 'SCANNING' || stage === 'QUESTIONING_TEST' || stage === 'WATER_DEMO' || stage === 'GUMGUM_DEMO' || (stage === 'STANDBY' && fluidModeActive);
 
 function getCameraErrorMessage(error: unknown) {
   if (error instanceof DOMException) {

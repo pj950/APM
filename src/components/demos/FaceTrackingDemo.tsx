@@ -6,7 +6,7 @@
  * 因此这里也用 MindAR 的人脸网格 (addFaceMesh) 做载体，把这些 Unity 原始贴图 UV 映射到
  * 实时追踪的脸上，并每 5 秒自动轮换一张，对齐 Unity 里 ToggleFace 的切换演示。
  *
- * - MindAR (WebAR) 独占摄像头 + Three.js 渲染（CV 管线已在 useCVCapture 中排除 FACE_DEMO）。
+ * - MindAR (WebAR) 独占摄像头 + Three.js 渲染（CV 管线已在 useCVCapture 中排除 QUESTIONING / FACE_DEMO）。
  * - 贴图全部预加载，切换时只替换流动着色器的 uMap uniform，零延迟。
  * - 使用 Three.js 的 PBR MeshStandardMaterial 对齐 Unity Universal PBR；只通过 onBeforeCompile
  *   注入原 ShaderGraph 的 UV Rotate(Time) + texture ×2，避免手写五官阴影造成贴纸感。
@@ -15,10 +15,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import * as THREE from 'three';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { MindARThree } from 'mind-ar/dist/mindar-face-three.prod.js';
 import { useAppStore } from '../../store/useAppStore';
-import { prefetchTTS, speakWithPreset, stopSpeaking, VOICE_PRESETS } from '../../services/tts';
+import { prefetchTTS, speakWithPreset, stopSpeaking } from '../../services/tts';
 import type { PersonalityDimensions, VoicePresetKey } from '../../types';
 
 /** 贴图自动轮换间隔（毫秒），对齐 Unity ToggleFace 演示 */
@@ -26,8 +25,8 @@ const FACE_SWITCH_INTERVAL_MS = 5000;
 
 /** 来自 dilmerv/FaceTrackingDemo 的 Unity 原始面部贴图（已下载到 public/unity-face/textures） */
 const UNITY_FACE_TEXTURES: Array<{ file: string; label: string }> = [
-  { file: 'cartoon.png', label: 'Cartoon' },
   { file: 'superheros.jpg', label: 'Superheros' },
+  { file: 'cartoon.png', label: 'Cartoon' },
   { file: 'uv.png', label: 'UV Debug' },
 ];
 
@@ -101,34 +100,89 @@ const FACE_QUESTIONS: FaceQuestion[] = [
 const FACE_SELECT_HOLD_MS = 1500;
 const FACE_SELECT_YAW_THRESHOLD = 0.28;
 const FACE_SELECT_CONFIRM_PAUSE_MS = 1100;
-const VOICE_PRESET_KEYS = Object.keys(VOICE_PRESETS) as VoicePresetKey[];
+const FACE_DEMO_VOICE_PRESET: VoicePresetKey = 'crystal';
 const LEFT_EYE_LANDMARKS = [33, 133, 159, 145] as const;
 const RIGHT_EYE_LANDMARKS = [362, 263, 386, 374] as const;
+const MOUTH_STABILIZE_LANDMARKS = [
+  0, 13, 14, 17, 37, 39, 40, 61, 78, 80, 81, 82, 84, 87, 88, 91, 95, 146, 178, 181, 185, 191,
+  267, 269, 270, 291, 308, 310, 311, 312, 314, 317, 318, 321, 324, 375, 402, 405, 409, 415,
+] as const;
+const MOUTH_OPEN_REFERENCE_LANDMARKS = { upper: 13, lower: 14 } as const;
+const MOUTH_NEUTRAL_UPDATE_DISTANCE = 0.075;
+const MOUTH_STABILIZE_START_DISTANCE = 0.09;
+const MOUTH_STABILIZE_FULL_DISTANCE = 0.24;
+const MOUTH_STABILIZE_MAX_BLEND = 0.68;
+const FAST_TURN_MIN_YAW_SPEED = 0.9;
+const FAST_TURN_MAX_PREDICTION_SECONDS = 0.065;
+const FAST_TURN_PREDICTION_BIAS_SECONDS = 0.024;
+const FAST_TURN_MAX_YAW_LEAD = 0.16;
 
 type MindARFaceGeometry = THREE.BufferGeometry & {
   updatePositions?: (landmarks: number[][]) => void;
 };
 
-function pickRandomVoicePreset(current?: VoicePresetKey): VoicePresetKey {
-  const candidates = VOICE_PRESET_KEYS.filter((key) => key !== current);
-  const pool = candidates.length > 0 ? candidates : VOICE_PRESET_KEYS;
-  return pool[Math.floor(Math.random() * pool.length)];
-}
-
 function toSpeechLabel(label: string) {
   return label.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '').trim();
 }
 
-function patchForeheadCoverage(geometry: MindARFaceGeometry) {
+function patchFaceMeshDeformation(geometry: MindARFaceGeometry) {
   if (!geometry.updatePositions) return;
 
   const originalUpdatePositions = geometry.updatePositions.bind(geometry);
   const uv = geometry.getAttribute('uv');
+  const neutralMouthPositions = new Float32Array(MOUTH_STABILIZE_LANDMARKS.length * 3);
+  let hasNeutralMouth = false;
+
+  const captureNeutralMouth = (position: THREE.BufferAttribute) => {
+    for (let i = 0; i < MOUTH_STABILIZE_LANDMARKS.length; i += 1) {
+      const idx = MOUTH_STABILIZE_LANDMARKS[i];
+      if (idx >= position.count) continue;
+      const offset = i * 3;
+      neutralMouthPositions[offset] = position.getX(idx);
+      neutralMouthPositions[offset + 1] = position.getY(idx);
+      neutralMouthPositions[offset + 2] = position.getZ(idx);
+    }
+    hasNeutralMouth = true;
+  };
+
   geometry.updatePositions = (landmarks: number[][]) => {
     originalUpdatePositions(landmarks);
 
     const position = geometry.getAttribute('position') as THREE.BufferAttribute;
     if (!uv || !position) return;
+
+    const upperMouth = landmarks[MOUTH_OPEN_REFERENCE_LANDMARKS.upper];
+    const lowerMouth = landmarks[MOUTH_OPEN_REFERENCE_LANDMARKS.lower];
+    const mouthOpenDistance = upperMouth && lowerMouth
+      ? Math.hypot(
+          lowerMouth[0] - upperMouth[0],
+          lowerMouth[1] - upperMouth[1],
+          lowerMouth[2] - upperMouth[2],
+        )
+      : 0;
+
+    if (!hasNeutralMouth || mouthOpenDistance < MOUTH_NEUTRAL_UPDATE_DISTANCE) {
+      captureNeutralMouth(position);
+    }
+
+    const mouthStabilize = hasNeutralMouth
+      ? THREE.MathUtils.smoothstep(mouthOpenDistance, MOUTH_STABILIZE_START_DISTANCE, MOUTH_STABILIZE_FULL_DISTANCE) *
+        MOUTH_STABILIZE_MAX_BLEND
+      : 0;
+
+    if (mouthStabilize > 0) {
+      for (let i = 0; i < MOUTH_STABILIZE_LANDMARKS.length; i += 1) {
+        const idx = MOUTH_STABILIZE_LANDMARKS[i];
+        if (idx >= position.count) continue;
+        const offset = i * 3;
+        position.setXYZ(
+          idx,
+          THREE.MathUtils.lerp(position.getX(idx), neutralMouthPositions[offset], mouthStabilize),
+          THREE.MathUtils.lerp(position.getY(idx), neutralMouthPositions[offset + 1], mouthStabilize),
+          THREE.MathUtils.lerp(position.getZ(idx), neutralMouthPositions[offset + 2], mouthStabilize),
+        );
+      }
+    }
 
     for (let i = 0; i < position.count; i += 1) {
       const v = uv.getY(i);
@@ -154,7 +208,7 @@ function createCartoonAnimatedMaterial(map: THREE.Texture): THREE.MeshStandardMa
     metalness: 1.0,
     roughness: 0.305,
     envMapIntensity: 1.65,
-    side: THREE.FrontSide,
+    side: THREE.DoubleSide,
     transparent: false,
     depthWrite: true,
     depthTest: true,
@@ -232,16 +286,7 @@ export function FaceTrackingDemo() {
   const optionButtonRefs = useRef<Array<HTMLButtonElement | null>>([null, null]);
 
   const question = FACE_QUESTIONS[currentIdx];
-  const [presets] = useState<VoicePresetKey[]>(() => {
-    const list: VoicePresetKey[] = [];
-    let current: VoicePresetKey | undefined = undefined;
-    for (let index = 0; index < FACE_QUESTIONS.length; index += 1) {
-      const next = pickRandomVoicePreset(current);
-      list.push(next);
-      current = next;
-    }
-    return list;
-  });
+  const [presets] = useState<VoicePresetKey[]>(() => FACE_QUESTIONS.map(() => FACE_DEMO_VOICE_PRESET));
 
   useEffect(() => {
     currentIdxRef.current = currentIdx;
@@ -430,7 +475,6 @@ export function FaceTrackingDemo() {
     let disposed = false;
     let mindarThree: MindARThree | null = null;
     let switchTimer: number | null = null;
-    let environmentMap: THREE.Texture | null = null;
     const textures: THREE.Texture[] = [];
 
     const cleanup = () => {
@@ -451,8 +495,6 @@ export function FaceTrackingDemo() {
       }
       for (const tex of textures) tex.dispose();
       textures.length = 0;
-      environmentMap?.dispose();
-      environmentMap = null;
       mindarThree = null;
     };
 
@@ -463,20 +505,14 @@ export function FaceTrackingDemo() {
           uiLoading: 'no',
           uiScanning: 'no',
           uiError: 'no',
-          // 贴近 Unity ARFaceManager 的即时贴脸感：使用 MindAR 默认 OneEuro 参数，
-          // 避免过度平滑造成“人已经动了，面具慢慢追上来”。
-          filterMinCF: null,
-          filterBeta: null,
+          // 提高 OneEuro 动态响应，减少快速侧转时的贴图滞后。
+          filterMinCF: 0.012,
+          filterBeta: 850,
         });
 
         const { scene, renderer } = mindarThree;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         renderer.toneMappingExposure = 1.15;
-        const pmrem = new THREE.PMREMGenerator(renderer);
-        environmentMap = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-        scene.environment = environmentMap;
-        pmrem.dispose();
-
         scene.add(new THREE.HemisphereLight(0xffffff, 0x1c2230, 1.15));
         const keyLight = new THREE.DirectionalLight(0xfff0d8, 2.15);
         keyLight.position.set(-1.8, 2.4, 3.2);
@@ -485,7 +521,7 @@ export function FaceTrackingDemo() {
         fillLight.position.set(2.2, 0.6, 1.6);
         scene.add(fillLight);
 
-        // 预加载 Unity 面部贴图（与摄像头启动并行）
+        // 首屏只等待“摄像头 + 首张贴图”，其余贴图后台加载
         setLoadProgress({ done: 0, total: 2 });
         const loader = new THREE.TextureLoader();
         const loadOne = (file: string) =>
@@ -505,29 +541,34 @@ export function FaceTrackingDemo() {
             );
           });
 
-        // 并行加载贴图和启动摄像头，大幅缩短总加载时间
-        const texturePromise = Promise.all(UNITY_FACE_TEXTURES.map((t) => loadOne(t.file)));
-        const cameraPromise = mindarThree.start();
-        const [loaded] = await Promise.all([texturePromise, cameraPromise]);
+        const validIndices: number[] = [];
+
+        let bootTexture: THREE.Texture | null = null;
+        let bootIndex = -1;
+        for (let i = 0; i < UNITY_FACE_TEXTURES.length; i += 1) {
+          const tex = await loadOne(UNITY_FACE_TEXTURES[i].file);
+          if (!tex) continue;
+          bootTexture = tex;
+          bootIndex = i;
+          break;
+        }
+        setLoadProgress((p) => ({ done: Math.min(p.done + 1, p.total), total: p.total }));
         if (disposed) return;
 
-        const validIndices: number[] = [];
-        loaded.forEach((tex, i) => {
-          if (tex) {
-            textures.push(tex);
-            validIndices.push(i);
-          }
-        });
-        if (textures.length === 0) {
+        if (!bootTexture || bootIndex < 0) {
           throw new Error('所有 Unity 面部贴图均加载失败');
         }
+
+        textures.push(bootTexture);
+        validIndices.push(bootIndex);
 
         // 人脸网格作为贴图载体（UV 映射到追踪到的脸上）
         const faceMesh = mindarThree.addFaceMesh();
         const faceGeometry = faceMesh.geometry as MindARFaceGeometry;
-        patchForeheadCoverage(faceGeometry);
+        patchFaceMeshDeformation(faceGeometry);
         const faceMaterial = createCartoonAnimatedMaterial(textures[0]);
         faceMesh.material = faceMaterial;
+        faceMesh.frustumCulled = false;
         // 注意：MindAR 的 addFaceMesh 只把 mesh 推入内部数组用于更新矩阵/可见性，
         // 并不会自动加入场景，必须手动 add，否则贴图永远不会被渲染。
         scene.add(faceMesh);
@@ -546,6 +587,56 @@ export function FaceTrackingDemo() {
         const rightEyeWorld = new THREE.Vector3();
         const forwardDir = new THREE.Vector3();
         const eyeLocal = new THREE.Vector3();
+        const rawFaceMatrix = new THREE.Matrix4();
+        const predictedFaceMatrix = new THREE.Matrix4();
+        const rawFacePosition = new THREE.Vector3();
+        const rawFaceQuaternion = new THREE.Quaternion();
+        const rawFaceScale = new THREE.Vector3();
+        const rawFaceEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+        const predictedFaceEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+        const predictedFaceQuaternion = new THREE.Quaternion();
+        let hasRawFacePose = false;
+        let lastRawFaceAt = 0;
+        let lastRawFaceYaw = 0;
+        let rawFaceYawVelocity = 0;
+
+        const originalFaceMatrixSet = faceMesh.matrix.set.bind(faceMesh.matrix);
+        faceMesh.matrix.set = ((...elements: Parameters<THREE.Matrix4['set']>) => {
+          const result = originalFaceMatrixSet(...elements);
+          const now = performance.now();
+          rawFaceMatrix.copy(faceMesh.matrix);
+          rawFaceMatrix.decompose(rawFacePosition, rawFaceQuaternion, rawFaceScale);
+          rawFaceEuler.setFromQuaternion(rawFaceQuaternion, 'YXZ');
+          if (hasRawFacePose) {
+            const dt = Math.max(0.001, (now - lastRawFaceAt) / 1000);
+            rawFaceYawVelocity = THREE.MathUtils.clamp((rawFaceEuler.y - lastRawFaceYaw) / dt, -8, 8);
+          }
+          hasRawFacePose = true;
+          lastRawFaceAt = now;
+          lastRawFaceYaw = rawFaceEuler.y;
+          return result;
+        }) as THREE.Matrix4['set'];
+
+        const applyFastTurnPrediction = () => {
+          if (!hasRawFacePose || Math.abs(rawFaceYawVelocity) < FAST_TURN_MIN_YAW_SPEED) return;
+
+          const elapsedSinceRaw = Math.max(0, (performance.now() - lastRawFaceAt) / 1000);
+          const predictionSeconds = Math.min(
+            FAST_TURN_MAX_PREDICTION_SECONDS,
+            elapsedSinceRaw + FAST_TURN_PREDICTION_BIAS_SECONDS,
+          );
+          const yawLead = THREE.MathUtils.clamp(
+            rawFaceYawVelocity * predictionSeconds,
+            -FAST_TURN_MAX_YAW_LEAD,
+            FAST_TURN_MAX_YAW_LEAD,
+          );
+
+          predictedFaceEuler.set(rawFaceEuler.x, rawFaceEuler.y + yawLead, rawFaceEuler.z, 'YXZ');
+          predictedFaceQuaternion.setFromEuler(predictedFaceEuler);
+          predictedFaceMatrix.compose(rawFacePosition, predictedFaceQuaternion, rawFaceScale);
+          faceMesh.matrix.copy(predictedFaceMatrix);
+          faceMesh.matrixWorldNeedsUpdate = true;
+        };
 
         const projectEye = (
           origin: THREE.Vector3,
@@ -581,6 +672,8 @@ export function FaceTrackingDemo() {
         };
 
         renderer.setAnimationLoop(() => {
+          applyFastTurnPrediction();
+
           const shader = faceMaterial.userData.shader as { uniforms?: Record<string, { value: unknown }> } | undefined;
           const elapsed = clock.getElapsedTime();
           if (shader?.uniforms?.uTime) shader.uniforms.uTime.value = elapsed;
@@ -663,7 +756,7 @@ export function FaceTrackingDemo() {
           renderer.render(scene, camera);
         });
 
-        // 自动轮换：替换流动材质的贴图 uniform
+        // 自动轮换：替换流动材质的贴图 uniform（支持后台新增贴图）
         let cursor = 0;
         const showFace = (idx: number) => {
           faceMaterial.map = textures[idx];
@@ -673,14 +766,41 @@ export function FaceTrackingDemo() {
         };
         showFace(cursor);
 
-        if (textures.length > 1) {
-          switchTimer = window.setInterval(() => {
-            cursor = (cursor + 1) % textures.length;
-            showFace(cursor);
-          }, FACE_SWITCH_INTERVAL_MS);
-        }
-
         setStatus('running');
+
+        void mindarThree.start()
+          .then(() => {
+            if (!disposed) setLoadProgress((p) => ({ done: Math.min(p.done + 1, p.total), total: p.total }));
+          })
+          .catch((err) => {
+            if (disposed) return;
+            console.error('[FaceTrackingDemo] 摄像头启动失败', err);
+            setErrorMessage(err instanceof Error ? err.message : '摄像头启动失败');
+            setStatus('error');
+          });
+
+        switchTimer = window.setInterval(() => {
+          if (textures.length <= 1) return;
+          cursor = (cursor + 1) % textures.length;
+          showFace(cursor);
+        }, FACE_SWITCH_INTERVAL_MS);
+
+        void (async () => {
+          for (let i = 0; i < UNITY_FACE_TEXTURES.length; i += 1) {
+            const exists = validIndices.includes(i);
+            if (exists) continue;
+
+            const tex = await loadOne(UNITY_FACE_TEXTURES[i].file);
+            if (!tex) continue;
+            if (disposed) {
+              tex.dispose();
+              continue;
+            }
+
+            textures.push(tex);
+            validIndices.push(i);
+          }
+        })();
       } catch (err) {
         if (disposed) return;
         console.error('[FaceTrackingDemo] 初始化失败', err);

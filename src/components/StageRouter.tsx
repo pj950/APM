@@ -11,7 +11,6 @@ import { TarotStage } from './stages/TarotStage';
 import { WaterSimulator } from './demos/WaterSimulator';
 import { GumGumHandStretch } from './demos/GumGumHandStretch';
 import { FaceTrackingDemo } from './demos/FaceTrackingDemo';
-import { ARFaceMaskOverlay } from './questioning/ARFaceMaskOverlay';
 
 export function StageRouter() {
   const currentStage = useAppStore((s) => s.currentStage);
@@ -26,10 +25,10 @@ export function StageRouter() {
     cameraDebugMessage,
     workerReady,
   } = useCVCapture();
-  const showCameraPreview = currentStage === 'SCANNING' || currentStage === 'QUESTIONING';
+  const showCameraPreview = currentStage === 'SCANNING' || currentStage === 'QUESTIONING_TEST';
   const isWaterDemo = currentStage === 'WATER_DEMO';
   const isGumGumDemo = currentStage === 'GUMGUM_DEMO';
-  // FACE_DEMO 由 MindAR 独立管理摄像头与渲染，不使用共享 video 元素
+  // QUESTIONING / FACE_DEMO 由 MindAR 独立管理摄像头与渲染，不使用共享 video 元素
   const shouldShowCameraRescue = showCameraPreview && !cameraLive;
   const cameraStatusText = trackingStatus === 'error'
     ? trackingError || cameraDebugMessage
@@ -72,12 +71,12 @@ export function StageRouter() {
 
       {/* 人形粒子扫描层 */}
       <BodyScanCanvas />
-      <ARFaceMaskOverlay />
 
       {/* 阶段路由 */}
       {currentStage === 'STANDBY' && <StandbyStage />}
       {currentStage === 'SCANNING' && <ScanningStage onRetryCamera={() => void startCamera()} />}
-      {currentStage === 'QUESTIONING' && <QuestioningStage />}
+      {currentStage === 'QUESTIONING' && <FaceTrackingDemo />}
+      {currentStage === 'QUESTIONING_TEST' && <QuestioningStage />}
       {currentStage === 'GENERATING' && <GeneratingStage />}
       {currentStage === 'RESULT' && <ResultStage />}
       {currentStage === 'DIALOGUE' && <DialogueStage />}
