@@ -310,7 +310,7 @@ export default defineConfig({
     exclude: ['mind-ar'],
   },
   server: {
-    port: 5174,
+    port: 5175,
     strictPort: true,
     proxy: {
       '/api/google-tts': {

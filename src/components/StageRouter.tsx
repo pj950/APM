@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { useCVCapture } from '../cv/useCVCapture';
 import { BodyScanCanvas } from './scanning/BodyScanCanvas';
@@ -10,7 +11,7 @@ import { DialogueStage } from './stages/DialogueStage';
 import { TarotStage } from './stages/TarotStage';
 import { WaterSimulator } from './demos/WaterSimulator';
 import { GumGumHandStretch } from './demos/GumGumHandStretch';
-import { FaceTrackingDemo } from './demos/FaceTrackingDemo';
+import { FaceTrackingDemo, preloadFaceDemoAssets } from './demos/FaceTrackingDemo';
 
 export function StageRouter() {
   const currentStage = useAppStore((s) => s.currentStage);
@@ -33,6 +34,11 @@ export function StageRouter() {
   const cameraStatusText = trackingStatus === 'error'
     ? trackingError || cameraDebugMessage
     : cameraDebugMessage;
+
+  useEffect(() => {
+    if (currentStage !== 'STANDBY' && currentStage !== 'SCANNING') return;
+    void preloadFaceDemoAssets();
+  }, [currentStage]);
 
   return (
     <div className="app-container">

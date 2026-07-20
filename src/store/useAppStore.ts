@@ -82,6 +82,7 @@ function deriveArchetype(qa: QASelection[], cv: CVFeatures): VisualArchetype {
 
 export const useAppStore = create<AppState>((set, get) => ({
   currentStage: 'STANDBY',
+  kioskMode: null,
   cvData: { ...DEFAULT_CV },
   faceLandmarks: null,
   poseLandmarks: null,
@@ -105,6 +106,25 @@ export const useAppStore = create<AppState>((set, get) => ({
   activeDimensionKey: null,
 
   setStage: (stage) => set({ currentStage: stage }),
+
+  setKioskMode: (mode) => set({ kioskMode: mode }),
+
+  // 答题 kiosk 循环：仅重置本轮答题相关状态并直接回到答题第一题，
+  // 保留 kioskMode，不回待机页、不重新走人体扫描，摄像头 keeper 复用不再弹权限。
+  restartQuiz: () =>
+    set({
+      currentStage: 'QUESTIONING',
+      qaAnswers: [],
+      calculatedArchetype: null,
+      personalityDimensions: null,
+      llmResultText: '',
+      finalCVData: null,
+      dialogueMessages: [],
+      isMirrorSpeaking: false,
+      introZooming: false,
+      introZoomProgress: 0,
+      activeDimensionKey: null,
+    }),
 
   updateCVData: (data) =>
     set((state) => ({
@@ -178,6 +198,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   resetSession: () =>
     set({
       currentStage: 'STANDBY',
+      kioskMode: null,
       cvData: { ...DEFAULT_CV },
       faceLandmarks: null,
       poseLandmarks: null,

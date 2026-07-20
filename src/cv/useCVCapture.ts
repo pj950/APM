@@ -9,6 +9,7 @@ import type { CVFeatures } from '../types';
 
 const ENABLE_FACE_LANDMARKS = true;
 const ENABLE_FACE_ANALYTICS = false;
+const AUTO_WARM_CAMERA_ON_APP_START = true;
 const isCameraStageActive = (stage: string, fluidModeActive: boolean) =>
   stage === 'SCANNING' || stage === 'QUESTIONING_TEST' || stage === 'WATER_DEMO' || stage === 'GUMGUM_DEMO' || (stage === 'STANDBY' && fluidModeActive);
 
@@ -74,6 +75,43 @@ export function useCVCapture() {
   const setTrackingError = useAppStore((s) => s.setTrackingError);
   const currentStage = useAppStore((s) => s.currentStage);
   const fluidModeActive = useAppStore((s) => s.fluidModeActive);
+
+  // 预热摄像头权限：页面启动后主动触发一次权限请求，避免在答题入口临时弹窗。
+  useEffect(() => {
+    if (!AUTO_WARM_CAMERA_ON_APP_START) return;
+    if (!navigator.mediaDevices?.getUserMedia) return;
+
+    let cancelled = false;
+
+    const warmPermission = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 320, max: 640 },
+            height: { ideal: 240, max: 480 },
+            frameRate: { ideal: 15, max: 24 },
+            facingMode: 'user',
+          },
+          audio: false,
+        });
+
+        stream.getTracks().forEach((track) => track.stop());
+        if (!cancelled) {
+          setCameraDebugMessage('摄像头权限已预热，进入阶段时可直接拉起');
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setCameraDebugMessage(getCameraErrorMessage(err));
+        }
+      }
+    };
+
+    void warmPermission();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const hasLiveVideoTrack = useCallback(() => {
     return Boolean(

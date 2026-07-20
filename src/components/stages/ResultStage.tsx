@@ -7,10 +7,8 @@ import { useMemo } from 'react';
 export function ResultStage() {
   const llmResultText = useAppStore((s) => s.llmResultText);
   const archetype = useAppStore((s) => s.calculatedArchetype);
-  const resetSession = useAppStore((s) => s.resetSession);
-  const setStage = useAppStore((s) => s.setStage);
-  const clearDialogue = useAppStore((s) => s.clearDialogue);
   const qaAnswers = useAppStore((s) => s.qaAnswers);
+  const restartQuiz = useAppStore((s) => s.restartQuiz);
 
 
 
@@ -144,41 +142,6 @@ export function ResultStage() {
     };
   }, [archetype]);
 
-  // 生成分享文本
-  const generateShareText = () => {
-    const dimText = archetype ? `[${archetype.dimensions.capital}${archetype.dimensions.spirit}${archetype.dimensions.intellect}${archetype.dimensions.social}${archetype.dimensions.order}${archetype.dimensions.energy}]` : '未知';
-    const lines = [
-      `🪞 AI 相镜扫描结果`,
-      ``,
-      `人格：${archetype?.name} ${dimText}`,
-      ``,
-      `判词：${resultNarrative}`,
-    ];
-    return lines.join('\n');
-  };
-
-  // 导出为文本
-  const handleExport = () => {
-    const text = generateShareText();
-    const element = document.createElement('a');
-    element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
-    element.setAttribute('download', `AI-Mirror-${Date.now()}.txt`);
-    element.style.display = 'none';
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
-  };
-
-  // 复制到剪贴板
-  const handleShare = () => {
-    const text = generateShareText();
-    navigator.clipboard.writeText(text).then(() => {
-      alert('已复制到剪贴板！');
-    }).catch(() => {
-      alert('复制失败，请手动复制');
-    });
-  };
-
   return (
     <div className="stage stage-result">
 
@@ -223,20 +186,11 @@ export function ResultStage() {
           <p className="result-text">{resultNarrative}</p>
 
           <div className="result-actions">
-            <button className="btn-primary" onClick={() => { resetSession(); setStage('STANDBY'); }}>
-              ↺ 重新扫描
-            </button>
             <button
               className="btn-primary"
-              onClick={() => { clearDialogue(); setStage('DIALOGUE'); }}
+              onClick={() => restartQuiz()}
             >
-              🪞 进入对话
-            </button>
-            <button className="btn-secondary" onClick={handleShare}>
-              📋 分享
-            </button>
-            <button className="btn-secondary" onClick={handleExport}>
-              💾 导出
+              ↺ 重新扫描
             </button>
           </div>
         </div>

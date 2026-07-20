@@ -30,6 +30,24 @@ const UNITY_FACE_TEXTURES: Array<{ file: string; label: string }> = [
   { file: 'uv.png', label: 'UV Debug' },
 ];
 
+let faceDemoAssetsPreloadPromise: Promise<void> | null = null;
+
+export function preloadFaceDemoAssets() {
+  if (faceDemoAssetsPreloadPromise) return faceDemoAssetsPreloadPromise;
+
+  faceDemoAssetsPreloadPromise = Promise.all(
+    UNITY_FACE_TEXTURES.map(({ file }) =>
+      fetch(`${import.meta.env.BASE_URL}unity-face/textures/${file}`, { cache: 'force-cache' })
+        .then(() => undefined)
+        .catch((err) => {
+          console.warn(`[FaceTrackingDemo] 贴图预加载失败: ${file}`, err);
+        }),
+    ),
+  ).then(() => undefined);
+
+  return faceDemoAssetsPreloadPromise;
+}
+
 type FaceQuestion = {
   id: string;
   text: string;
@@ -101,8 +119,13 @@ const FACE_SELECT_HOLD_MS = 1500;
 const FACE_SELECT_YAW_THRESHOLD = 0.28;
 const FACE_SELECT_CONFIRM_PAUSE_MS = 1100;
 const FACE_DEMO_VOICE_PRESET: VoicePresetKey = 'crystal';
-const LEFT_EYE_LANDMARKS = [33, 133, 159, 145] as const;
-const RIGHT_EYE_LANDMARKS = [362, 263, 386, 374] as const;
+const LEFT_EYE_CORNERS = [33, 133] as const;
+const RIGHT_EYE_CORNERS = [362, 263] as const;
+const LEFT_EYE_UPPER = [159, 158] as const;
+const RIGHT_EYE_UPPER = [386, 385] as const;
+const LEFT_IRIS_CENTER = 468;
+const RIGHT_IRIS_CENTER = 473;
+const DEBUG_EYE_LASER_ORIGIN = false;
 const MOUTH_STABILIZE_LANDMARKS = [
   0, 13, 14, 17, 37, 39, 40, 61, 78, 80, 81, 82, 84, 87, 88, 91, 95, 146, 178, 181, 185, 191,
   267, 269, 270, 291, 308, 310, 311, 312, 314, 317, 318, 321, 324, 375, 402, 405, 409, 415,
@@ -247,6 +270,121 @@ function createCartoonAnimatedMaterial(map: THREE.Texture): THREE.MeshStandardMa
   return material;
 }
 
+function createPlaceholderFaceTexture() {
+  const data = new Uint8Array([255, 255, 255, 255]);
+  const texture = new THREE.DataTexture(data, 1, 1, THREE.RGBAFormat);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function releaseExistingCameraStreams(skipWithin?: Element | null) {
+  const videos = Array.from(document.querySelectorAll('video'));
+  videos.forEach((video) => {
+    if (skipWithin?.contains(video)) return;
+    const src = video.srcObject;
+    if (!(src instanceof MediaStream)) return;
+    src.getTracks().forEach((track) => track.stop());
+    video.srcObject = null;
+  });
+}
+
+function clearMindArInjectedMedia(container: HTMLElement) {
+  container.querySelectorAll('video, canvas').forEach((node) => node.remove());
+}
+
+// 答题页(MindAR)摄像头持久化：MindAR 内部会自己 getUserMedia 并在停止时关闭摄像头，
+// 导致“授权 -> 退出 -> 再进入又要选摄像头/再授权”的反复弹窗。这里在进入答题期间拦截
+// getUserMedia：首次真实申请一次并把这条流留作 keeper（持有设备），交给 MindAR 的是它的克隆；
+// 之后再进入直接返回 keeper 的克隆，不再触发真实申请/权限弹窗。退出不停 keeper，空闲计时后才释放。
+const FACE_CAMERA_IDLE_MS = 4 * 60 * 1000;
+let faceKeeperStream: MediaStream | null = null;
+let faceKeeperIdleTimer: number | null = null;
+let originalGetUserMedia: ((constraints?: MediaStreamConstraints) => Promise<MediaStream>) | null = null;
+
+function faceKeeperHasLiveVideo() {
+  return Boolean(faceKeeperStream?.getVideoTracks().some((track) => track.readyState === 'live'));
+}
+
+function cloneFaceKeeperStream(): MediaStream {
+  return new MediaStream((faceKeeperStream as MediaStream).getVideoTracks().map((track) => track.clone()));
+}
+
+function patchGetUserMediaForFaceReuse() {
+  const md = navigator.mediaDevices;
+  if (!md?.getUserMedia || originalGetUserMedia) return;
+  originalGetUserMedia = md.getUserMedia.bind(md);
+  md.getUserMedia = async (constraints?: MediaStreamConstraints) => {
+    const wantsVideo = Boolean(constraints && constraints.video);
+    if (wantsVideo && faceKeeperHasLiveVideo()) {
+      // 复用已授权 keeper：返回克隆，MindAR 停止克隆时不会杀掉 keeper。
+      return cloneFaceKeeperStream();
+    }
+    const stream = await (originalGetUserMedia as (c?: MediaStreamConstraints) => Promise<MediaStream>)(constraints);
+    if (wantsVideo) {
+      faceKeeperStream = stream; // 真正的一条留作 keeper（持有设备），MindAR 拿克隆
+      return cloneFaceKeeperStream();
+    }
+    return stream;
+  };
+}
+
+function unpatchGetUserMediaForFaceReuse() {
+  if (originalGetUserMedia && navigator.mediaDevices) {
+    navigator.mediaDevices.getUserMedia = originalGetUserMedia;
+    originalGetUserMedia = null;
+  }
+}
+
+function stopFaceKeeperStream() {
+  if (faceKeeperStream) {
+    faceKeeperStream.getTracks().forEach((track) => track.stop());
+    faceKeeperStream = null;
+  }
+}
+
+function cancelFaceKeeperIdleStop() {
+  if (faceKeeperIdleTimer !== null) {
+    window.clearTimeout(faceKeeperIdleTimer);
+    faceKeeperIdleTimer = null;
+  }
+}
+
+function scheduleFaceKeeperIdleStop() {
+  cancelFaceKeeperIdleStop();
+  faceKeeperIdleTimer = window.setTimeout(() => {
+    stopFaceKeeperStream();
+  }, FACE_CAMERA_IDLE_MS);
+}
+
+async function sleep(ms: number) {
+  await new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function startMindArWithRetry(mindarThree: MindARThree, maxAttempts = 3) {
+  let lastError: unknown = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await sleep(attempt === 1 ? 180 : 420);
+      await mindarThree.start();
+      return;
+    } catch (err) {
+      lastError = err;
+      try {
+        mindarThree.stop();
+      } catch {
+        /* 忽略停止异常 */
+      }
+      if (attempt < maxAttempts) {
+        await sleep(320 * attempt);
+      }
+    }
+  }
+
+  throw lastError ?? new Error('摄像头启动失败');
+}
+
 export function FaceTrackingDemo() {
   const setStage = useAppStore((s) => s.setStage);
   const triggerGeneration = useAppStore((s) => s.triggerGeneration);
@@ -258,6 +396,7 @@ export function FaceTrackingDemo() {
   const [status, setStatus] = useState<'loading' | 'running' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [loadProgress, setLoadProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
+  const [cameraRetrySeed, setCameraRetrySeed] = useState(0);
   const [activeLabel, setActiveLabel] = useState<string>('');
   const [currentIdx, setCurrentIdx] = useState(0);
   const [answers, setAnswers] = useState<(0 | 1)[]>(Array(FACE_QUESTIONS.length).fill(-1));
@@ -476,6 +615,7 @@ export function FaceTrackingDemo() {
     let mindarThree: MindARThree | null = null;
     let switchTimer: number | null = null;
     const textures: THREE.Texture[] = [];
+    const placeholderTexture = createPlaceholderFaceTexture();
 
     const cleanup = () => {
       if (switchTimer !== null) {
@@ -493,13 +633,28 @@ export function FaceTrackingDemo() {
       } catch {
         /* 忽略渲染器释放异常 */
       }
+      clearMindArInjectedMedia(container);
+      placeholderTexture.dispose();
       for (const tex of textures) tex.dispose();
       textures.length = 0;
       mindarThree = null;
+      // 恢复原始 getUserMedia，避免拦截影响其他阶段；keeper 不立即停，改为空闲计时释放，
+      // 短时间内再次进入答题会直接复用同一条已授权流，不再弹权限/摄像头选择。
+      unpatchGetUserMediaForFaceReuse();
+      scheduleFaceKeeperIdleStop();
     };
 
     const run = async () => {
       try {
+        // 进入答题：先取消 keeper 空闲释放并安装 getUserMedia 拦截，让 MindAR 复用已授权流。
+        cancelFaceKeeperIdleStop();
+        patchGetUserMediaForFaceReuse();
+        // Release any existing getUserMedia streams first to avoid device-busy races
+        // when switching from SCANNING/QUESTIONING_TEST into MindAR QUESTIONING.
+        releaseExistingCameraStreams(container);
+        clearMindArInjectedMedia(container);
+        await new Promise((resolve) => window.setTimeout(resolve, 120));
+
         mindarThree = new MindARThree({
           container,
           uiLoading: 'no',
@@ -521,7 +676,7 @@ export function FaceTrackingDemo() {
         fillLight.position.set(2.2, 0.6, 1.6);
         scene.add(fillLight);
 
-        // 首屏只等待“摄像头 + 首张贴图”，其余贴图后台加载
+        // 首屏先启动 MindAR，真实贴图并行加载，避免“贴图网络/解码 -> 摄像头”串行等待。
         setLoadProgress({ done: 0, total: 2 });
         const loader = new THREE.TextureLoader();
         const loadOne = (file: string) =>
@@ -543,30 +698,11 @@ export function FaceTrackingDemo() {
 
         const validIndices: number[] = [];
 
-        let bootTexture: THREE.Texture | null = null;
-        let bootIndex = -1;
-        for (let i = 0; i < UNITY_FACE_TEXTURES.length; i += 1) {
-          const tex = await loadOne(UNITY_FACE_TEXTURES[i].file);
-          if (!tex) continue;
-          bootTexture = tex;
-          bootIndex = i;
-          break;
-        }
-        setLoadProgress((p) => ({ done: Math.min(p.done + 1, p.total), total: p.total }));
-        if (disposed) return;
-
-        if (!bootTexture || bootIndex < 0) {
-          throw new Error('所有 Unity 面部贴图均加载失败');
-        }
-
-        textures.push(bootTexture);
-        validIndices.push(bootIndex);
-
         // 人脸网格作为贴图载体（UV 映射到追踪到的脸上）
         const faceMesh = mindarThree.addFaceMesh();
         const faceGeometry = faceMesh.geometry as MindARFaceGeometry;
         patchFaceMeshDeformation(faceGeometry);
-        const faceMaterial = createCartoonAnimatedMaterial(textures[0]);
+        const faceMaterial = createCartoonAnimatedMaterial(placeholderTexture);
         faceMesh.material = faceMaterial;
         faceMesh.frustumCulled = false;
         // 注意：MindAR 的 addFaceMesh 只把 mesh 推入内部数组用于更新矩阵/可见性，
@@ -574,7 +710,7 @@ export function FaceTrackingDemo() {
         scene.add(faceMesh);
 
         if (disposed) return;
-        setLoadProgress({ done: 2, total: 2 });
+  setLoadProgress({ done: 1, total: 2 });
 
         const { camera } = mindarThree;
         const clock = new THREE.Clock();
@@ -586,6 +722,8 @@ export function FaceTrackingDemo() {
         const leftEyeWorld = new THREE.Vector3();
         const rightEyeWorld = new THREE.Vector3();
         const forwardDir = new THREE.Vector3();
+        const rightDir = new THREE.Vector3();
+        const upDir = new THREE.Vector3();
         const eyeLocal = new THREE.Vector3();
         const rawFaceMatrix = new THREE.Matrix4();
         const predictedFaceMatrix = new THREE.Matrix4();
@@ -641,31 +779,70 @@ export function FaceTrackingDemo() {
         const projectEye = (
           origin: THREE.Vector3,
           rootRect: DOMRect,
+          canvasRect: DOMRect,
           out: { x: number; y: number },
         ) => {
           projected.copy(origin).project(camera);
-          out.x = THREE.MathUtils.clamp(((projected.x + 1) * 0.5) * rootRect.width, 14, rootRect.width - 14);
-          out.y = THREE.MathUtils.clamp(((1 - projected.y) * 0.5) * rootRect.height, 18, rootRect.height - 18);
+          const canvasX = canvasRect.left - rootRect.left + ((projected.x + 1) * 0.5) * canvasRect.width;
+          const canvasY = canvasRect.top - rootRect.top + ((1 - projected.y) * 0.5) * canvasRect.height;
+          out.x = THREE.MathUtils.clamp(canvasX, 14, rootRect.width - 14);
+          out.y = THREE.MathUtils.clamp(canvasY, 18, rootRect.height - 18);
         };
 
-        const sampleEyeWorld = (indices: readonly number[], out: THREE.Vector3) => {
+        const sampleEyeAnchorWorld = (
+          corners: readonly number[],
+          uppers: readonly number[],
+          irisIndex: number,
+          out: THREE.Vector3,
+        ) => {
           const position = faceGeometry.getAttribute('position') as THREE.BufferAttribute | undefined;
           if (!position || position.count <= 0) return false;
 
-          let sx = 0;
-          let sy = 0;
-          let sz = 0;
-          let valid = 0;
-          for (const idx of indices) {
-            if (idx >= position.count) continue;
-            sx += position.getX(idx);
-            sy += position.getY(idx);
-            sz += position.getZ(idx);
-            valid += 1;
+          if (irisIndex < position.count) {
+            out.set(position.getX(irisIndex), position.getY(irisIndex), position.getZ(irisIndex));
+            faceMesh.localToWorld(out);
+            return true;
           }
-          if (valid === 0) return false;
 
-          eyeLocal.set(sx / valid, sy / valid, sz / valid);
+          let cornerX = 0;
+          let cornerY = 0;
+          let cornerZ = 0;
+          let cornerValid = 0;
+          for (const idx of corners) {
+            if (idx >= position.count) continue;
+            cornerX += position.getX(idx);
+            cornerY += position.getY(idx);
+            cornerZ += position.getZ(idx);
+            cornerValid += 1;
+          }
+
+          let upperX = 0;
+          let upperY = 0;
+          let upperZ = 0;
+          let upperValid = 0;
+          for (const idx of uppers) {
+            if (idx >= position.count) continue;
+            upperX += position.getX(idx);
+            upperY += position.getY(idx);
+            upperZ += position.getZ(idx);
+            upperValid += 1;
+          }
+
+          if (cornerValid === 0 || upperValid === 0) return false;
+
+          const cornerMidX = cornerX / cornerValid;
+          const cornerMidY = cornerY / cornerValid;
+          const cornerMidZ = cornerZ / cornerValid;
+          const upperMidX = upperX / upperValid;
+          const upperMidY = upperY / upperValid;
+          const upperMidZ = upperZ / upperValid;
+
+          // Anchor at geometric midpoint between canthus center and upper-eyelid center.
+          eyeLocal.set(
+            (cornerMidX + upperMidX) * 0.5,
+            (cornerMidY + upperMidY) * 0.5,
+            (cornerMidZ + upperMidZ) * 0.5,
+          );
           out.copy(eyeLocal);
           faceMesh.localToWorld(out);
           return true;
@@ -673,6 +850,10 @@ export function FaceTrackingDemo() {
 
         renderer.setAnimationLoop(() => {
           applyFastTurnPrediction();
+
+          // Ensure projection uses latest world transforms for this frame.
+          faceMesh.updateMatrixWorld(true);
+          camera.updateMatrixWorld(true);
 
           const shader = faceMaterial.userData.shader as { uniforms?: Record<string, { value: unknown }> } | undefined;
           const elapsed = clock.getElapsedTime();
@@ -691,25 +872,45 @@ export function FaceTrackingDemo() {
             faceMesh.getWorldPosition(faceWorldPos);
             faceMesh.getWorldScale(faceWorldScale);
             const rootRect = rootRef.current?.getBoundingClientRect();
-            if (rootRect) {
+            const canvasRect = renderer.domElement.getBoundingClientRect();
+            if (rootRect && canvasRect.width > 0 && canvasRect.height > 0) {
               forwardDir.set(0, 0, 1).applyQuaternion(faceQuaternion).normalize();
+              upDir.set(0, 1, 0).applyQuaternion(faceQuaternion).normalize();
               const eyeForwardOffset = Math.max(faceWorldScale.z * 0.06, 0.03);
+              const eyeSideOffset = Math.max(faceWorldScale.x * 0.18, 0.045);
+              const eyeUpOffset = Math.max(faceWorldScale.y * 0.045, 0.02);
 
               const nextLeft = { x: 0, y: 0 };
               const nextRight = { x: 0, y: 0 };
 
-              const hasLeftEye = sampleEyeWorld(LEFT_EYE_LANDMARKS, leftEyeWorld);
-              const hasRightEye = sampleEyeWorld(RIGHT_EYE_LANDMARKS, rightEyeWorld);
+              const hasLeftEye = sampleEyeAnchorWorld(LEFT_EYE_CORNERS, LEFT_EYE_UPPER, LEFT_IRIS_CENTER, leftEyeWorld);
+              const hasRightEye = sampleEyeAnchorWorld(RIGHT_EYE_CORNERS, RIGHT_EYE_UPPER, RIGHT_IRIS_CENTER, rightEyeWorld);
               if (hasLeftEye && hasRightEye) {
                 leftEyeWorld.addScaledVector(forwardDir, eyeForwardOffset);
                 rightEyeWorld.addScaledVector(forwardDir, eyeForwardOffset);
-                projectEye(leftEyeWorld, rootRect, nextLeft);
-                projectEye(rightEyeWorld, rootRect, nextRight);
+                projectEye(leftEyeWorld, rootRect, canvasRect, nextLeft);
+                projectEye(rightEyeWorld, rootRect, canvasRect, nextRight);
+              } else {
+                // Fallback to pose-derived eye anchors so laser origin still tracks the face
+                // when mesh eye landmarks are temporarily unavailable.
+                rightDir.set(1, 0, 0).applyQuaternion(faceQuaternion).normalize();
+
+                leftEyeWorld
+                  .copy(faceWorldPos)
+                  .addScaledVector(rightDir, -eyeSideOffset)
+                  .addScaledVector(upDir, eyeUpOffset)
+                  .addScaledVector(forwardDir, eyeForwardOffset);
+                rightEyeWorld
+                  .copy(faceWorldPos)
+                  .addScaledVector(rightDir, eyeSideOffset)
+                  .addScaledVector(upDir, eyeUpOffset)
+                  .addScaledVector(forwardDir, eyeForwardOffset);
+
+                projectEye(leftEyeWorld, rootRect, canvasRect, nextLeft);
+                projectEye(rightEyeWorld, rootRect, canvasRect, nextRight);
               }
 
               if (
-                hasLeftEye &&
-                hasRightEye &&
                 Number.isFinite(nextLeft.x) &&
                 Number.isFinite(nextLeft.y) &&
                 Number.isFinite(nextRight.x) &&
@@ -759,37 +960,29 @@ export function FaceTrackingDemo() {
         // 自动轮换：替换流动材质的贴图 uniform（支持后台新增贴图）
         let cursor = 0;
         const showFace = (idx: number) => {
+          if (!textures[idx]) return;
           faceMaterial.map = textures[idx];
           faceMaterial.needsUpdate = true;
           const originalIndex = validIndices[idx];
           setActiveLabel(UNITY_FACE_TEXTURES[originalIndex].label);
         };
-        showFace(cursor);
 
-        setStatus('running');
-
-        void mindarThree.start()
+        void startMindArWithRetry(mindarThree, 3)
           .then(() => {
-            if (!disposed) setLoadProgress((p) => ({ done: Math.min(p.done + 1, p.total), total: p.total }));
+            if (disposed) return;
+            setLoadProgress((p) => ({ done: Math.min(p.done + 1, p.total), total: p.total }));
+            setStatus('running');
           })
           .catch((err) => {
             if (disposed) return;
             console.error('[FaceTrackingDemo] 摄像头启动失败', err);
-            setErrorMessage(err instanceof Error ? err.message : '摄像头启动失败');
+            setErrorMessage(err instanceof Error ? err.message : '摄像头启动失败，请检查权限或设备占用后重试');
             setStatus('error');
           });
 
-        switchTimer = window.setInterval(() => {
-          if (textures.length <= 1) return;
-          cursor = (cursor + 1) % textures.length;
-          showFace(cursor);
-        }, FACE_SWITCH_INTERVAL_MS);
-
         void (async () => {
+          let showedFirstTexture = false;
           for (let i = 0; i < UNITY_FACE_TEXTURES.length; i += 1) {
-            const exists = validIndices.includes(i);
-            if (exists) continue;
-
             const tex = await loadOne(UNITY_FACE_TEXTURES[i].file);
             if (!tex) continue;
             if (disposed) {
@@ -799,8 +992,29 @@ export function FaceTrackingDemo() {
 
             textures.push(tex);
             validIndices.push(i);
+            if (!showedFirstTexture) {
+              showedFirstTexture = true;
+              cursor = 0;
+              showFace(cursor);
+              setLoadProgress({ done: 2, total: 2 });
+            }
           }
-        })();
+
+          if (!disposed && textures.length === 0) {
+            throw new Error('所有 Unity 面部贴图均加载失败');
+          }
+        })().catch((err) => {
+          if (disposed) return;
+          console.error('[FaceTrackingDemo] 贴图加载失败', err);
+          setErrorMessage(err instanceof Error ? err.message : '面部贴图加载失败');
+          setStatus('error');
+        });
+
+        switchTimer = window.setInterval(() => {
+          if (textures.length <= 1) return;
+          cursor = (cursor + 1) % textures.length;
+          showFace(cursor);
+        }, FACE_SWITCH_INTERVAL_MS);
       } catch (err) {
         if (disposed) return;
         console.error('[FaceTrackingDemo] 初始化失败', err);
@@ -816,7 +1030,7 @@ export function FaceTrackingDemo() {
       disposed = true;
       cleanup();
     };
-  }, []);
+  }, [cameraRetrySeed]);
 
   return (
     <div className="face-demo" ref={rootRef}>
@@ -842,6 +1056,21 @@ export function FaceTrackingDemo() {
 
       {status === 'running' ? (
         <>
+          {DEBUG_EYE_LASER_ORIGIN ? (
+            <>
+              <span
+                className="face-demo-eye-origin face-demo-eye-origin--left"
+                style={{ left: `${laserOrigins.left.x}px`, top: `${laserOrigins.left.y}px` }}
+                aria-hidden="true"
+              />
+              <span
+                className="face-demo-eye-origin face-demo-eye-origin--right"
+                style={{ left: `${laserOrigins.right.x}px`, top: `${laserOrigins.right.y}px` }}
+                aria-hidden="true"
+              />
+            </>
+          ) : null}
+
           {confirmedOption === null && lookOption !== null ? (
             <>
               <div
@@ -972,6 +1201,18 @@ export function FaceTrackingDemo() {
           <div className="face-demo__overlay-text face-demo__overlay-text--error">
             {errorMessage || '初始化失败'}
           </div>
+          <button
+            type="button"
+            className="face-demo__back face-demo__back--inline"
+            onClick={() => {
+              setStatus('loading');
+              setErrorMessage('');
+              setLoadProgress({ done: 0, total: 0 });
+              setCameraRetrySeed((seed) => seed + 1);
+            }}
+          >
+            重试摄像头
+          </button>
           <button
             type="button"
             className="face-demo__back face-demo__back--inline"

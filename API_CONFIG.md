@@ -184,4 +184,4 @@ A: DeepSeek 通常最便宜（¥0.14/百万 tokens input）。
 ---
 
 **最后更新**：2024-06  
-**配置完成后**：运行 `npm run dev` 启动开发服务器，访问 http://localhost:5174
+**配置完成后**：运行 `npm run dev` 启动开发服务器，访问 http://localhost:5175

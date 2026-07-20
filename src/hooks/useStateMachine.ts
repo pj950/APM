@@ -17,6 +17,7 @@ export function useStateMachine() {
   const currentStage = useAppStore((s) => s.currentStage);
   const resetSession = useAppStore((s) => s.resetSession);
   const setStage = useAppStore((s) => s.setStage);
+  const kioskMode = useAppStore((s) => s.kioskMode);
   const hasPose = useAppStore((s) => Boolean(s.poseLandmarks && s.poseLandmarks.length >= 33));
   const attentionScore = useAppStore((s) => s.cvData.attentionScore);
   const lastActivityRef = useRef(Date.now());
@@ -57,6 +58,12 @@ export function useStateMachine() {
       // 问答阶段不自动超时，避免用户在作答过程中被强制退出。
       lastActivityRef.current = Date.now();
     } else if (currentStage === 'RESULT') {
+      // 答题 kiosk 模式：结果页不自动回退，等用户点击「重新提问」在答题内循环。
+      if (kioskMode === 'quiz') {
+        return () => {
+          if (timerRef.current) clearInterval(timerRef.current);
+        };
+      }
       const enterTime = Date.now();
       timerRef.current = setInterval(() => {
         if (Date.now() - enterTime > RESULT_TIMEOUT) {
@@ -75,7 +82,7 @@ export function useStateMachine() {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [currentStage, resetSession]);
+  }, [currentStage, resetSession, kioskMode]);
 
   return { recordActivity };
 }

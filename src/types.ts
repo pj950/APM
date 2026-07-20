@@ -64,9 +64,13 @@ export interface DialogueMessage {
 /** 声音预设键名 */
 export type VoicePresetKey = 'gollum' | 'robot' | 'ethereal' | 'deep' | 'crystal';
 
+/** kiosk 展台模式：锁定当前设备只在「答题」或「塔罗」中循环，不回到选择页 */
+export type KioskMode = 'quiz' | 'tarot' | null;
+
 /** 全局 Zustand Store 结构 */
 export interface AppState {
   currentStage: AppStage;
+  kioskMode: KioskMode;
   cvData: CVFeatures;
   faceLandmarks: number[][] | null;
   poseLandmarks: number[][] | null;  // 原始 pose 骨骼点 (用于人形粒子渲染)
@@ -83,6 +87,8 @@ export interface AppState {
 
   // Actions
   setStage: (stage: AppStage) => void;
+  setKioskMode: (mode: KioskMode) => void;
+  restartQuiz: () => void;
   updateCVData: (data: Partial<CVFeatures>) => void;
   updateFaceLandmarks: (landmarks: number[][] | null) => void;
   updatePoseLandmarks: (landmarks: number[][] | null) => void;

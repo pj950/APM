@@ -9,15 +9,20 @@ export function StandbyStage() {
   const updateFluidConfig = useAppStore((s) => s.updateFluidConfig);
   const setStage = useAppStore((s) => s.setStage);
   const recordScanStart = useAppStore((s) => s.recordScanStart);
+  const setKioskMode = useAppStore((s) => s.setKioskMode);
 
   const [panelOpen, setPanelOpen] = useState(true);
 
   const handleStartScan = () => {
+    // 答题 kiosk：锁定本机为答题模式，直接进入答题（跳过人体扫描），
+    // 之后由结果页「重新提问」在答题内循环，不再回到本待机页。
+    setKioskMode('quiz');
     recordScanStart();
-    setStage('SCANNING');
+    setStage('QUESTIONING');
   };
 
   const handleStartTarot = () => {
+    setKioskMode('tarot');
     recordScanStart();
     setStage('TAROT');
   };
@@ -189,7 +194,7 @@ export function StandbyStage() {
             type="button"
             onClick={handleStartScan}
           >
-            开始人格解析
+            开始答题
           </button>
           <button
             className="btn-fluid-action btn-fluid-action--secondary"

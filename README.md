@@ -50,17 +50,56 @@ STANDBY → SCANNING → QUESTIONING → GENERATING → RESULT → STANDBY
 - RESULT 阶段 30s 后自动回退 STANDBY
 - QUESTIONING 阶段会停留在当前题，直到用户明确作答或主动返回
 
+### 展台（kiosk）循环模式
+
+为把「答题」和「塔罗」分别部署到两台互不影响的电脑并长期循环，待机页选择一次后即锁定本机模式（`kioskMode`）：
+
+- 点击**开始答题** → 锁定 `kioskMode='quiz'`，**直接进入 `QUESTIONING`（跳过人体扫描 `SCANNING`）**。答完出结果后，结果页只保留一个 **↺ 重新扫描** 按钮，点击调用 `restartQuiz()` 只重置本轮答题状态并直接回到答题第一题**重新答题**，**不回待机页、不重新扫描、不重新加载**；摄像头沿用 MindAR keeper 持久流，循环重入不再弹权限。（该按钮无论从待机页还是从星系场景进入答题都统一走 `restartQuiz()`，不会跳回星系；进入对话/分享/导出按钮已移除。）
+  - 答题 kiosk 下 RESULT 不再 30s 自动回退，等待用户点击「重新扫描」。
+- 点击**探索命运塔罗** → 锁定 `kioskMode='tarot'`，进入塔罗 iframe；塔罗自身已支持内部「重新提问」自重启，无需重新加载。
+- 关于人体扫描 `SCANNING`：它只负责「有人靠近稳定 3s 自动进入答题」的入场闸门，以及用摄像头 CV 数据决定结果的次要修饰符 `modifierType`（纯视觉，不影响 64 种人格本体，人格完全由 6 道题决定）。因此答题 kiosk 直接跳过它。
+
+## 迁移 / 部署到另一台机器（两台电脑分屏）
+
+目标：一台跑「答题」、一台跑「塔罗」，各自循环互不影响。步骤：
+
+```powershell
+git clone https://github.com/pj950/APM.git
+cd APM/ai-mirror
+npm install --legacy-peer-deps   # 必须：mind-ar 与 three@0.160 有 peer 冲突
+npm run dev                      # 端口 5175（strictPort）
+```
+
+- Node 用 **20.x**（当前 v20.18.1）；勿升级 Vite(5)/Three(0.160)。
+
+**git 里没有、需从本机手动拷贝的资源**（已被 `.gitignore` 排除）：
+
+| 目录 / 文件 | 缺失影响 | 处理 |
+|---|---|---|
+| `.env` | 答题 LLM 判词为空（本地六维侧写仍在）、塔罗解读不出 | 从 `.env.example` 复制并填 `VITE_LLM_API_URL / VITE_LLM_API_KEY / VITE_LLM_MODEL` |
+| `public/images/` | 答题结果页全息卡人格图 `{id}_profile.png` 裂图 | 从本机对应目录拷回 |
+| `public/model/` | 3D 面具 GLB 缺失（**答题本身不依赖**，人脸贴图用已提交的 `public/unity-face/textures/`） | 需要面具阶段时拷回 |
+
+> 答题所需的 `public/unity-face/textures/`（人脸贴图）已提交进 git，clone 即可用；只有结果页配图和 LLM 判词依赖上表两项。
+> 塔罗资源 `public/tarot/` 已提交；解读走后端代理 `/api/tarot-reading`，同样依赖 LLM key / 服务端配置。
+
+
 ## 开发
 
 ```bash
 cd ai-mirror
-npm run dev        # 启动开发服务器 (localhost:5174)
+npm run dev        # 启动开发服务器 (localhost:5175)
 npm run build      # 生产构建
 ```
 
-开发服务器固定使用 `localhost:5174`，并启用 Vite `strictPort`；如果 5174 已被占用，服务会直接报错，不会自动跳到 5174/5175/5176。
+开发服务器固定使用 `localhost:5175`，并启用 Vite `strictPort`；如果 5175 已被占用，服务会直接报错，不会自动跳到 5175/5175/5176。
+
+应用启动时会执行一次摄像头权限预热（`useCVCapture`），把授权弹窗前置到启动阶段，减少进入 `QUESTIONING / FACE_DEMO` 时临时弹窗打断；若浏览器站点权限设置为“每次询问”，仍可能重复提示，请改为“允许”。
 
 `public/model/` 与 `public/images/` 体积较大，作为本地资源目录保留，不随 Git 推送；需要这些模型或人格图片时，从本机备份复制到对应目录即可。
+
+塔罗入口的摄像头改为“父窗口持久流 + iframe 复用”模型：宿主页（`TarotStage.tsx`）在模块作用域持有一条已授权的摄像头流，并通过 `window.__ensureTarotCameraStream` 暴露给同源 iframe；iframe 内部不再自己反复 `getUserMedia`，而是优先向父窗口索取这条 live 流。因此**授权一次后，反复进出塔罗都复用同一条流，不会再弹权限/摄像头选择框**。离开塔罗不会立刻停摄像头，而是启动约 4 分钟的空闲计时；这期间再次进入直接复用，超时未进入才真正释放设备。（注意：iframe 与父窗口是不同 realm，父窗口创建的流在 iframe 里用 `instanceof MediaStream` 会判为 false，因此复用/停止判断一律使用鸭子类型 `getVideoTracks/getTracks`。）
+塔罗 iframe 内部现在用 `复用父窗口流(或本地 getUserMedia 兜底) -> video.play -> requestAnimationFrame` 驱动 MediaPipe Hands：只要拿到 live track 就立即启动帧循环（帧循环自带 `readyState` 守卫），出帧检测改为轮询兜底且失败也不会中断启动，避免“已授权却因 `loadedmetadata` 事件与 `play()` 竞态被误判为失败而停掉摄像头”。`play()` 因自动播放策略被拒时也只告警、不整体失败。摄像头启动期间会在 iframe 中显示当前步骤（申请权限 / 启动 / 等待视频帧）和最终错误，方便现场判断是权限、播放还是设备占用问题。
 
 ## 演示页面（待机流体模式入口）
 
@@ -75,13 +114,17 @@ npm run build      # 生产构建
 参考 `dilmerv/FaceTrackingDemo` 的效果，用 Web 技术复刻“面具实时贴脸并跟随头部姿态”的体验：
 
 - 使用 [`mind-ar`](https://github.com/hiukim/mind-ar-js)（MIT，基于 TensorFlow.js + MediaPipe face mesh）独占摄像头并自带 Three.js 渲染。
+- `QUESTIONING / FACE_DEMO` 进入时会先释放宿主页面旧摄像头流并清理 MindAR 上次注入的 video/canvas，再顺序启动 MindAR 摄像头；启动重试不会再用超时 race 并发打断同一个 MindAR 实例，避免“权限已给但再次进入卡加载”的残留启动状态。
 - 进入 `FACE_DEMO` 后，CV 主管线（`useCVCapture`）会主动让出摄像头（`FACE_DEMO` 已从 `isCameraStageActive` 移除），避免与 MindAR 抢占设备。
+- 答题页摄像头持久化，避免“授权 -> 退出 -> 再进入又要选摄像头/再授权”的反复弹窗：MindAR 内部会自己 `getUserMedia` 并在停止时关闭摄像头，因此进入答题期间会拦截 `getUserMedia`——首次真实申请一次并把这条流留作 keeper（持有设备），交给 MindAR 的是它的**克隆**（MindAR 停止克隆不会杀掉 keeper）；之后再进入直接返回 keeper 的克隆，不再触发真实申请/权限弹窗。退出答题会恢复原始 `getUserMedia` 并对 keeper 启动约 4 分钟空闲计时，超时未再进入才真正释放设备。实测：首次进入真实 `getUserMedia` 调用 1 次，退出再进入答题时**零新增**调用，摄像头正常（640×480、live）。
 - `FACE_DEMO` 已集成 6 题二选一答题流程：页面保留 MindAR face mesh 面具，同时在顶部显示左右选项、底部显示当前题；不使用举手识别，直接读取 MindAR 面部网格的头部 yaw，用户看向左侧/右侧并保持约 1 秒即可确认对应选项，答完后写入 6 维人格并进入生成阶段。
 - 左右语义已校正为“看左选左、看右选右”（按用户视角），避免镜像预览和世界坐标符号差异导致反选。
 - `FACE_DEMO` 的确认反馈已升级为“看向即开火”：头部朝向达到阈值并完成保持后，会从中心朝被选方向打出一道短促激光，同时被命中的答案卡触发崩碎动画，再进入下一题，避免无感跳题。
 - 为保证不同屏幕和帧率下都清晰可见，激光采用“父层定位 + 子层 beam/flash 动画”结构，避免动画覆盖左右方向位移导致光束丢失。
+- 眼部激光的发射点不再按整页尺寸估算，而是把 face mesh 眼部顶点投影到 MindAR 自动计算出的真实 canvas 显示区域，再换算回页面坐标；需要校准时可临时打开左右眼原点小圆点，用来确认发射点是否贴在眼睛上。
 - **直接复用 `dilmerv/FaceTrackingDemo` 的 Unity 原始面具贴图**：该 Unity 项目的“面具”并不是 3D 模型，而是贴在 AR 人脸网格上的 2D 面部贴图（`Assets/Textures/` 下的 `cartoon` / `humanface` / `virus1` / `virus2` / `superheros` / `uv`）。这些贴图已下载到 `public/unity-face/textures/`；当前自动轮换只启用 `cartoon` / `superheros` / `uv`，暂不轮换 `humanface` / `virus1` / `virus2`。
 - 实现上用 MindAR 的人脸网格（`addFaceMesh()`）作为载体，把这些贴图 UV 映射到实时追踪到的脸上；所有贴图预加载，切换时只替换材质贴图 uniform，每 5 秒自动轮换一张（对齐 Unity 里 `ToggleFace` 的切换演示），零延迟。
+- 为缩短答题页首屏等待，`STANDBY / SCANNING` 会提前预取面部贴图；进入 `QUESTIONING / FACE_DEMO` 后 MindAR 先用 1×1 占位贴图启动摄像头和 face mesh，真实贴图加载完成后再替换材质，避免贴图网络/解码和摄像头初始化串行阻塞。
 - `cartoon` 路径使用了自定义 ShaderMaterial 复刻 `CartoonAnimated`：核心为 UV 绕中心随时间连续旋转，并做 ×2 emission 提亮。
 - 原 Unity 材质是 Opaque / Alpha=1 / AlphaClip=0，贴图本身没有透明眼嘴；Web 版同样不做眼睛和嘴巴开口，保留完整动态 face mesh 覆盖，避免不规则裁切造成“洞口不贴合”的观感。
 - 为贴近原 Unity 设置，FACE_DEMO 使用 MindAR 默认 OneEuro 滤波参数，避免过度平滑造成面具滞后；材质主体改为 Three.js `MeshStandardMaterial`，对应 Unity Universal PBR 的 Opaque + ZWrite + `_Metallic=1` / `_Smoothness=0.695` 观感。
